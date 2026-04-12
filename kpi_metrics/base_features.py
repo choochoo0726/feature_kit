@@ -68,3 +68,66 @@ class RollingSumBaseFeature(BaseFeature):
             windows=self.windows,
         )
         return result.select([*self.params.keys, self.params.date_col, *feature_cols])
+
+
+class YOYGrowthBaseFeature(BaseFeature):
+    """YoY growth of N-day rolling sum: (sum_t - sum_{t-yoy_days}) / abs(sum_{t-yoy_days})."""
+
+    def __init__(
+        self,
+        params: Param,
+        windows: list[tuple[str, int]] | None = None,
+        yoy_days: int = 364,
+    ) -> None:
+        self.params = params
+        self.windows = windows if windows is not None else _DEFAULT_YOY_WINDOWS
+        self.yoy_days = yoy_days
+
+    def compute(self, df: pl.DataFrame) -> pl.DataFrame:
+        keys = self.params.keys
+        date_col = self.params.date_col
+        metrics = self.params.metrics
+
+        # Step 1: compute rolling sums
+        roll_df = _rolling_sum(
+            df.sort([*keys, date_col]),
+            metrics=metrics,
+            keys=keys,
+            windows=self.windows,
+        )
+
+        roll_cols = [
+            f"{m}__ROLLING_SUM__{name.upper()}"
+            for m, (name, _) in iproduct(metrics, self.windows)
+        ]
+
+        # Step 2: build prior-year version by offsetting DATADATE forward by yoy_days
+        prior_df = (
+            roll_df
+            .select([*keys, date_col, *roll_cols])
+            .with_columns(
+                (pl.col(date_col) + pl.duration(days=self.yoy_days)).alias(date_col)
+            )
+            .rename({c: f"{c}__PRIOR" for c in roll_cols})
+        )
+
+        # Step 3: join current with prior on (keys, date_col)
+        joined = roll_df.join(prior_df, on=[*keys, date_col], how="left")
+
+        # Step 4: compute growth = (curr - prior) / abs(prior)
+        feature_exprs = []
+        feature_cols = []
+        for m, (name, _) in iproduct(metrics, self.windows):
+            curr = f"{m}__ROLLING_SUM__{name.upper()}"
+            prior = f"{curr}__PRIOR"
+            feat = f"{m}__YOY_GROWTH__{name.upper()}"
+            feature_exprs.append(
+                ((pl.col(curr) - pl.col(prior)) / pl.col(prior).abs()).alias(feat)
+            )
+            feature_cols.append(feat)
+
+        return (
+            joined
+            .with_columns(feature_exprs)
+            .select([*keys, date_col, *feature_cols])
+        )

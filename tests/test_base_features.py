@@ -56,3 +56,52 @@ class TestRollingSumBaseFeature:
         result = feat.compute(small_df)
         for name in ["DAILY", "WEEKLY", "QUADWEEKLY", "QUARTERLY"]:
             assert f"SALES__ROLLING_SUM__{name}" in result.columns
+
+
+from kpi_metrics.base_features import YOYGrowthBaseFeature
+
+
+class TestYOYGrowthBaseFeature:
+    def test_output_columns(self):
+        params = Param(keys=["specid"], metrics=["SALES"])
+        feat = YOYGrowthBaseFeature(params, windows=[("quadweekly", 4)], yoy_days=7)
+        # Build 14-day df so yoy (7 days lag) is computable
+        df = pl.DataFrame({
+            "specid": ["A"] * 14,
+            "DATADATE": [date(2023, 1, i + 1) for i in range(14)],
+            "SALES": [float(i + 1) for i in range(14)],
+        })
+        result = feat.compute(df)
+        assert "SALES__YOY_GROWTH__QUADWEEKLY" in result.columns
+        assert set(result.columns) == {"specid", "DATADATE", "SALES__YOY_GROWTH__QUADWEEKLY"}
+
+    def test_yoy_growth_values(self):
+        # Window=1 (daily), yoy_days=7: growth at day 8 = (val8 - val1) / abs(val1)
+        params = Param(keys=["specid"], metrics=["SALES"])
+        feat = YOYGrowthBaseFeature(params, windows=[("daily", 1)], yoy_days=7)
+        df = pl.DataFrame({
+            "specid": ["A"] * 10,
+            "DATADATE": [date(2023, 1, i + 1) for i in range(10)],
+            "SALES": [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 20.0, 20.0, 20.0],
+        })
+        result = feat.compute(df)
+        # Days 1-7: prior is null (< yoy_days ago), growth = null
+        # Day 8: (20 - 10) / 10 = 1.0
+        vals = result["SALES__YOY_GROWTH__DAILY"].to_list()
+        assert vals[:7] == [None] * 7
+        assert vals[7] == pytest.approx(1.0)
+
+    def test_multiple_companies_independent(self):
+        params = Param(keys=["specid"], metrics=["SALES"])
+        feat = YOYGrowthBaseFeature(params, windows=[("daily", 1)], yoy_days=3)
+        df = pl.DataFrame({
+            "specid": ["A", "A", "A", "A", "B", "B", "B", "B"],
+            "DATADATE": [date(2023, 1, i + 1) for i in range(4)] * 2,
+            "SALES": [10.0, 10.0, 10.0, 20.0, 5.0, 5.0, 5.0, 15.0],
+        })
+        result = feat.compute(df)
+        a_vals = result.filter(pl.col("specid") == "A")["SALES__YOY_GROWTH__DAILY"].to_list()
+        b_vals = result.filter(pl.col("specid") == "B")["SALES__YOY_GROWTH__DAILY"].to_list()
+        # Day 4: (20 - 10) / 10 = 1.0 for A; (15 - 5) / 5 = 2.0 for B
+        assert a_vals[-1] == pytest.approx(1.0)
+        assert b_vals[-1] == pytest.approx(2.0)
