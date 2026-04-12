@@ -31,7 +31,7 @@ class LaggedYOYGrowthBenchmark(Benchmark):
 
     Each entry in *periods* is a ``(name, days)`` pair.  For every period the
     benchmark is computed for lags 1 × days, 2 × days, …, num_lags × days,
-    producing columns named ``{feature}__LAG{n}{NAME}_BENCHMARK``.
+    producing columns named ``{feature}__LAG{n}{NAME}``.
     """
 
     def __init__(
@@ -65,9 +65,9 @@ class LaggedYOYGrowthBenchmark(Benchmark):
                     .with_columns(
                         (pl.col(date_col) + pl.duration(days=lag)).alias(date_col)
                     )
-                    .rename({c: f"{c}__{suffix}_BENCHMARK" for c in yoy_cols})
+                    .rename({c: f"{c}__{suffix}" for c in yoy_cols})
                 )
-                bench_cols = [f"{c}__{suffix}_BENCHMARK" for c in yoy_cols]
+                bench_cols = [f"{c}__{suffix}" for c in yoy_cols]
                 result = result.join(
                     lag_df.select([*keys, date_col, *bench_cols]),
                     on=[*keys, date_col],
@@ -81,7 +81,7 @@ class LaggedPOPGrowthBenchmark(Benchmark):
 
     Each entry in *periods* is a ``(name, days)`` pair.  For every period the
     benchmark is computed for lags 1 × days, 2 × days, …, num_lags × days,
-    producing columns named ``{feature}__LAG{n}{NAME}_BENCHMARK``.
+    producing columns named ``{feature}__LAG{n}{NAME}``.
     """
 
     def __init__(
@@ -115,9 +115,9 @@ class LaggedPOPGrowthBenchmark(Benchmark):
                     .with_columns(
                         (pl.col(date_col) + pl.duration(days=lag)).alias(date_col)
                     )
-                    .rename({c: f"{c}__{suffix}_BENCHMARK" for c in pop_cols})
+                    .rename({c: f"{c}__{suffix}" for c in pop_cols})
                 )
-                bench_cols = [f"{c}__{suffix}_BENCHMARK" for c in pop_cols]
+                bench_cols = [f"{c}__{suffix}" for c in pop_cols]
                 result = result.join(
                     lag_df.select([*keys, date_col, *bench_cols]),
                     on=[*keys, date_col],
@@ -131,7 +131,7 @@ class LaggedRollingSumBenchmark(Benchmark):
 
     Each entry in *periods* is a ``(name, days)`` pair.  For every period the
     benchmark is computed for lags 1 × days, 2 × days, …, num_lags × days,
-    producing columns named ``{feature}__LAG{n}{NAME}_BENCHMARK``.
+    producing columns named ``{feature}__LAG{n}{NAME}``.
     """
 
     def __init__(
@@ -161,9 +161,9 @@ class LaggedRollingSumBenchmark(Benchmark):
                 lag_df = (
                     base_df.select([*keys, date_col, *roll_cols])
                     .with_columns((pl.col(date_col) + pl.duration(days=lag)).alias(date_col))
-                    .rename({c: f"{c}__{suffix}_BENCHMARK" for c in roll_cols})
+                    .rename({c: f"{c}__{suffix}" for c in roll_cols})
                 )
-                bench_cols = [f"{c}__{suffix}_BENCHMARK" for c in roll_cols]
+                bench_cols = [f"{c}__{suffix}" for c in roll_cols]
                 result = result.join(lag_df.select([*keys, date_col, *bench_cols]), on=[*keys, date_col], how="left")
         return result
 
@@ -173,7 +173,7 @@ class LaggedYOYProjectedRollingSumBenchmark(Benchmark):
 
     Each entry in *periods* is a ``(name, days)`` pair.  For every period the
     projection is computed for lags 1 × days, 2 × days, …, num_lags × days,
-    producing columns named ``{feature}__LAG{n}{NAME}_YOY_PROJECTED_BENCHMARK``.
+    producing columns named ``{feature}__LAG{n}{NAME}_YOY_PROJECTED``.
     """
 
     def __init__(
@@ -225,10 +225,10 @@ class LaggedYOYProjectedRollingSumBenchmark(Benchmark):
                 )
                 proj_exprs = [
                     (pl.col(f"{c}__YOY") * pl.col(f"{c}__{suffix}") / pl.col(f"{c}__YOY{suffix}"))
-                    .alias(f"{c}__{suffix}_YOY_PROJECTED_BENCHMARK")
+                    .alias(f"{c}__{suffix}_YOY_PROJECTED")
                     for c in roll_cols
                 ]
-                proj_cols = [f"{c}__{suffix}_YOY_PROJECTED_BENCHMARK" for c in roll_cols]
+                proj_cols = [f"{c}__{suffix}_YOY_PROJECTED" for c in roll_cols]
                 result = result.join(
                     joined.with_columns(proj_exprs).select([*keys, date_col, *proj_cols]),
                     on=[*keys, date_col],
