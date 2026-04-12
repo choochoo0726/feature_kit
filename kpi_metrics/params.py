@@ -67,7 +67,7 @@ class Comparison(ABC):
 class Transformation(ABC):
     @abstractmethod
     def compute(self, df: pl.DataFrame) -> pl.DataFrame:
-        """Apply transformation to feature columns in-place.
+        """Apply transformation to feature columns, returning a DataFrame with the same structure.
 
         Args:
             df: DataFrame with keys + date_col + feature columns.
