@@ -18,3 +18,8 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["kpi_metrics"]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.2.0",
+]
