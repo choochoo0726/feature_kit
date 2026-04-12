@@ -1,5 +1,4 @@
 from __future__ import annotations
-from itertools import product as iproduct
 
 import polars as pl
 
