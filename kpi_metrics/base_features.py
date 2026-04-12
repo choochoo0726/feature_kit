@@ -27,10 +27,14 @@ def _rolling_sum(
     df: pl.DataFrame,
     metrics: list[str],
     keys: list[str],
-    date_col: str,
     windows: list[tuple[str, int]],
 ) -> pl.DataFrame:
-    """Compute group-wise rolling sums. Assumes df is sorted by (keys, date_col)."""
+    """Compute group-wise rolling sums. Assumes df is sorted by (keys, date_col).
+
+    Window size is row-count-based, not calendar-day-based. For daily data with
+    no gaps, these are equivalent. Callers are responsible for ensuring the input
+    has no missing dates if calendar-day semantics are required.
+    """
     exprs = [
         pl.col(metric)
         .rolling_sum(window_size=days, min_samples=1)
@@ -61,7 +65,6 @@ class RollingSumBaseFeature(BaseFeature):
             df.sort([*self.params.keys, self.params.date_col]),
             metrics=self.params.metrics,
             keys=self.params.keys,
-            date_col=self.params.date_col,
             windows=self.windows,
         )
         return result.select([*self.params.keys, self.params.date_col, *feature_cols])
