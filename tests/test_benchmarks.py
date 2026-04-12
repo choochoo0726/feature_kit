@@ -87,3 +87,89 @@ class TestLaggedPOPGrowthBenchmark:
         result = LaggedPOPGrowthBenchmark(params).compute(base_df, raw)
         for lag in [7, 14, 28, 91]:
             assert f"SALES__POP_GROWTH__DAILY__LAG{lag}_BENCHMARK" in result.columns
+
+from kpi_metrics.base_features import RollingSumBaseFeature
+from kpi_metrics.benchmarks import (
+    LaggedRollingSumBenchmark,
+    LaggedYOYProjectedRollingSumBenchmark,
+    IBESConsensusSalesGrowthBenchmark,
+    CohortRollingSumBenchmark,
+)
+
+
+@pytest.fixture
+def rolling_base(params):
+    raw = pl.DataFrame({
+        "specid": ["A"] * 10,
+        "DATADATE": [date(2023, 1, i + 1) for i in range(10)],
+        "SALES": [float(i + 1) for i in range(10)],
+    })
+    base_df = RollingSumBaseFeature(params, windows=[("daily", 1)]).compute(raw)
+    return base_df, raw
+
+
+class TestLaggedRollingSumBenchmark:
+    def test_output_columns(self, params, rolling_base):
+        base_df, raw_df = rolling_base
+        result = LaggedRollingSumBenchmark(params, lags=[2]).compute(base_df, raw_df)
+        assert "SALES__ROLLING_SUM__DAILY__LAG2_BENCHMARK" in result.columns
+
+    def test_lagged_values(self, params, rolling_base):
+        base_df, raw_df = rolling_base
+        result = LaggedRollingSumBenchmark(params, lags=[1]).compute(base_df, raw_df)
+        col = "SALES__ROLLING_SUM__DAILY__LAG1_BENCHMARK"
+        vals = result[col].to_list()
+        assert vals[0] is None
+        assert vals[1] == pytest.approx(1.0)
+
+    def test_default_lags(self, params, rolling_base):
+        base_df, raw_df = rolling_base
+        result = LaggedRollingSumBenchmark(params).compute(base_df, raw_df)
+        for lag in [7, 14, 28, 91]:
+            assert f"SALES__ROLLING_SUM__DAILY__LAG{lag}_BENCHMARK" in result.columns
+
+
+class TestLaggedYOYProjectedRollingSumBenchmark:
+    def test_output_columns(self, params, rolling_base):
+        base_df, raw_df = rolling_base
+        result = LaggedYOYProjectedRollingSumBenchmark(params, lags=[2], yoy_days=3).compute(base_df, raw_df)
+        assert any("YOY_PROJECTED_BENCHMARK" in c for c in result.columns)
+
+    def test_has_keys_and_date(self, params, rolling_base):
+        base_df, raw_df = rolling_base
+        result = LaggedYOYProjectedRollingSumBenchmark(params, lags=[1], yoy_days=3).compute(base_df, raw_df)
+        assert "specid" in result.columns
+        assert "DATADATE" in result.columns
+
+
+class TestIBESConsensusSalesGrowthBenchmark:
+    def test_output_columns(self, params, yoy_base):
+        base_df, raw_df = yoy_base
+        ibes_df = pl.DataFrame({
+            "specid": ["A"] * 10,
+            "DATADATE": [date(2023, 1, i + 1) for i in range(10)],
+            "IBES_QUARTERLY_SALES_GROWTH_BENCHMARK": [0.05 * (i + 1) for i in range(10)],
+        })
+        result = IBESConsensusSalesGrowthBenchmark(params).compute(base_df, raw_df, external_dfs={"ibes": ibes_df})
+        assert "IBES_QUARTERLY_SALES_GROWTH_BENCHMARK" in result.columns
+
+    def test_raises_without_external_dfs(self, params, yoy_base):
+        base_df, raw_df = yoy_base
+        with pytest.raises(ValueError, match="requires external_dfs"):
+            IBESConsensusSalesGrowthBenchmark(params).compute(base_df, raw_df)
+
+    def test_invalid_freq_raises(self, params):
+        with pytest.raises(ValueError, match="freq must be"):
+            IBESConsensusSalesGrowthBenchmark(params, freq="annual")
+
+
+class TestCohortRollingSumBenchmark:
+    def test_output_columns(self, params, rolling_base):
+        base_df, raw_df = rolling_base
+        raw_with_sector = raw_df.with_columns(pl.lit("tech").alias("sector"))
+        result = CohortRollingSumBenchmark(params, cohort_cols=["sector"]).compute(base_df, raw_with_sector)
+        assert "SALES__ROLLING_SUM__DAILY__COHORT_BENCHMARK" in result.columns
+
+    def test_invalid_agg_raises(self, params):
+        with pytest.raises(ValueError, match="agg must be"):
+            CohortRollingSumBenchmark(params, cohort_cols=["sector"], agg="sum")
