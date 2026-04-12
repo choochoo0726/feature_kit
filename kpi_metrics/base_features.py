@@ -131,3 +131,62 @@ class YOYGrowthBaseFeature(BaseFeature):
             .with_columns(feature_exprs)
             .select([*keys, date_col, *feature_cols])
         )
+
+
+class POPGrowthBaseFeature(BaseFeature):
+    """Period-over-period growth: (rolling_sum_t - rolling_sum_{t-window_days}) / abs(rolling_sum_{t-window_days}).
+
+    The PoP lag equals the window size in days (e.g., 28-day window compared to 28 days ago).
+    """
+
+    def __init__(
+        self,
+        params: Param,
+        windows: list[tuple[str, int]] | None = None,
+    ) -> None:
+        self.params = params
+        self.windows = windows if windows is not None else _DEFAULT_POP_WINDOWS
+
+    def compute(self, df: pl.DataFrame) -> pl.DataFrame:
+        keys = self.params.keys
+        date_col = self.params.date_col
+        metrics = self.params.metrics
+
+        roll_df = _rolling_sum(
+            df.sort([*keys, date_col]),
+            metrics=metrics,
+            keys=keys,
+            windows=self.windows,
+        )
+
+        feature_exprs = []
+        feature_cols = []
+
+        for name, window_days in self.windows:
+            cols_for_window = [f"{m}__ROLLING_SUM__{name.upper()}" for m in metrics]
+
+            prior_df = (
+                roll_df
+                .select([*keys, date_col, *cols_for_window])
+                .with_columns(
+                    (pl.col(date_col) + pl.duration(days=window_days)).alias(date_col)
+                )
+                .rename({c: f"{c}__PRIOR" for c in cols_for_window})
+            )
+
+            roll_df = roll_df.join(prior_df, on=[*keys, date_col], how="left")
+
+            for m in metrics:
+                curr = f"{m}__ROLLING_SUM__{name.upper()}"
+                prior = f"{curr}__PRIOR"
+                feat = f"{m}__POP_GROWTH__{name.upper()}"
+                feature_exprs.append(
+                    ((pl.col(curr) - pl.col(prior)) / pl.col(prior).abs()).alias(feat)
+                )
+                feature_cols.append(feat)
+
+        return (
+            roll_df
+            .with_columns(feature_exprs)
+            .select([*keys, date_col, *feature_cols])
+        )

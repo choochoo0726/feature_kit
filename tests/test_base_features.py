@@ -105,3 +105,68 @@ class TestYOYGrowthBaseFeature:
         # Day 4: (20 - 10) / 10 = 1.0 for A; (15 - 5) / 5 = 2.0 for B
         assert a_vals[-1] == pytest.approx(1.0)
         assert b_vals[-1] == pytest.approx(2.0)
+
+
+from kpi_metrics.base_features import POPGrowthBaseFeature
+
+
+class TestPOPGrowthBaseFeature:
+    def test_output_columns(self):
+        params = Param(keys=["specid"], metrics=["SALES"])
+        feat = POPGrowthBaseFeature(params, windows=[("quadweekly", 4)])
+        df = pl.DataFrame({
+            "specid": ["A"] * 8,
+            "DATADATE": [date(2023, 1, i + 1) for i in range(8)],
+            "SALES": [float(i + 1) for i in range(8)],
+        })
+        result = feat.compute(df)
+        assert "SALES__POP_GROWTH__QUADWEEKLY" in result.columns
+        assert set(result.columns) == {"specid", "DATADATE", "SALES__POP_GROWTH__QUADWEEKLY"}
+
+    def test_pop_growth_values(self):
+        # window=("period3", 3), pop lag = 3 days
+        # rolling_sum(3) at day 4 = 2+3+4=9, at day 1 = 1+...clipped=1
+        # easier: window=("daily", 1) means rolling_sum=value itself, lag=1 day
+        # day 2: (2-1)/1=1.0, day 3: (3-2)/2=0.5, ...
+        params = Param(keys=["specid"], metrics=["SALES"])
+        feat = POPGrowthBaseFeature(params, windows=[("daily", 1)])
+        df = pl.DataFrame({
+            "specid": ["A"] * 5,
+            "DATADATE": [date(2023, 1, i + 1) for i in range(5)],
+            "SALES": [1.0, 2.0, 3.0, 4.0, 5.0],
+        })
+        result = feat.compute(df)
+        vals = result["SALES__POP_GROWTH__DAILY"].to_list()
+        # Day 1: no prior (1 day ago doesn't exist) → null
+        assert vals[0] is None
+        # Day 2: (2-1)/1 = 1.0
+        assert vals[1] == pytest.approx(1.0)
+        # Day 3: (3-2)/2 = 0.5
+        assert vals[2] == pytest.approx(0.5)
+
+    def test_default_windows(self):
+        params = Param(keys=["specid"], metrics=["SALES"])
+        feat = POPGrowthBaseFeature(params)
+        df = pl.DataFrame({
+            "specid": ["A"] * 5,
+            "DATADATE": [date(2023, 1, i + 1) for i in range(5)],
+            "SALES": [float(i + 1) for i in range(5)],
+        })
+        result = feat.compute(df)
+        assert "SALES__POP_GROWTH__QUADWEEKLY" in result.columns
+        assert "SALES__POP_GROWTH__QUARTERLY" in result.columns
+
+    def test_multiple_companies_independent(self):
+        params = Param(keys=["specid"], metrics=["SALES"])
+        feat = POPGrowthBaseFeature(params, windows=[("daily", 1)])
+        df = pl.DataFrame({
+            "specid": ["A", "A", "A", "B", "B", "B"],
+            "DATADATE": [date(2023, 1, i + 1) for i in range(3)] * 2,
+            "SALES": [1.0, 2.0, 3.0, 10.0, 20.0, 30.0],
+        })
+        result = feat.compute(df)
+        a_vals = result.filter(pl.col("specid") == "A")["SALES__POP_GROWTH__DAILY"].to_list()
+        b_vals = result.filter(pl.col("specid") == "B")["SALES__POP_GROWTH__DAILY"].to_list()
+        # Day 2: A=(2-1)/1=1.0, B=(20-10)/10=1.0
+        assert a_vals[1] == pytest.approx(1.0)
+        assert b_vals[1] == pytest.approx(1.0)
