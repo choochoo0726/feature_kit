@@ -64,7 +64,7 @@ class TestLaggedYOYGrowthBenchmark:
         base_df, raw_df = yoy_base
         result = LaggedYOYGrowthBenchmark(params).compute(base_df, raw_df)
         # default: periods=[("weekly",7),("monthly",28),("quarterly",91)], num_lags=1
-        for name in ["WEEKLY", "MONTHLY", "QUARTERLY"]:
+        for name in ["WEEK", "MONTH", "QUARTER"]:
             assert f"SALES__YOY_GROWTH__DAILY__LAG1{name}_BENCHMARK" in result.columns
 
     def test_multiple_lags(self, params, yoy_base):
@@ -95,7 +95,7 @@ class TestLaggedPOPGrowthBenchmark:
         base_df = POPGrowthBaseFeature(params, windows=[("daily", 1)]).compute(raw)
         result = LaggedPOPGrowthBenchmark(params).compute(base_df, raw)
         # default: periods=[("weekly",7),("monthly",28),("quarterly",91)], num_lags=1
-        for name in ["WEEKLY", "MONTHLY", "QUARTERLY"]:
+        for name in ["WEEK", "MONTH", "QUARTER"]:
             assert f"SALES__POP_GROWTH__DAILY__LAG1{name}_BENCHMARK" in result.columns
 
 from kpi_metrics.base_features import RollingSumBaseFeature
@@ -137,7 +137,7 @@ class TestLaggedRollingSumBenchmark:
         base_df, raw_df = rolling_base
         result = LaggedRollingSumBenchmark(params).compute(base_df, raw_df)
         # default: periods=[("weekly",7),("monthly",28),("quarterly",91)], num_lags=1
-        for name in ["WEEKLY", "MONTHLY", "QUARTERLY"]:
+        for name in ["WEEK", "MONTH", "QUARTER"]:
             assert f"SALES__ROLLING_SUM__DAILY__LAG1{name}_BENCHMARK" in result.columns
 
     def test_multiple_lags(self, params, rolling_base):
@@ -168,7 +168,7 @@ class TestLaggedYOYProjectedRollingSumBenchmark:
         base_df, raw_df = rolling_base
         result = LaggedYOYProjectedRollingSumBenchmark(params, yoy_days=3).compute(base_df, raw_df)
         # default: periods=[("weekly",7),("monthly",28),("quarterly",91)], num_lags=1
-        for name in ["WEEKLY", "MONTHLY", "QUARTERLY"]:
+        for name in ["WEEK", "MONTH", "QUARTER"]:
             assert f"SALES__ROLLING_SUM__DAILY__LAG1{name}_YOY_PROJECTED_BENCHMARK" in result.columns
 
 

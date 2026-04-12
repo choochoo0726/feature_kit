@@ -4,7 +4,7 @@ import polars as pl
 
 from kpi_metrics.params import Benchmark, Param
 
-_DEFAULT_PERIODS: list[tuple[str, int]] = [("weekly", 7), ("monthly", 28), ("quarterly", 91)]
+_DEFAULT_PERIODS: list[tuple[str, int]] = [("week", 7), ("month", 28), ("quarter", 91)]
 
 
 class ZeroBenchmark(Benchmark):
