@@ -51,10 +51,10 @@ class RollingSumBaseFeature(BaseFeature):
     def __init__(
         self,
         params: Param,
-        windows: list[tuple[str, int]] = _DEFAULT_ROLLING_WINDOWS,
+        windows: list[tuple[str, int]] | None = None,
     ) -> None:
         self.params = params
-        self.windows = windows
+        self.windows = windows if windows is not None else _DEFAULT_ROLLING_WINDOWS
 
     def compute(self, df: pl.DataFrame) -> pl.DataFrame:
         feature_cols = [
