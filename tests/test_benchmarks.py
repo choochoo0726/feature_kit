@@ -43,14 +43,15 @@ class TestZeroBenchmark:
 class TestLaggedYOYGrowthBenchmark:
     def test_output_columns(self, params, yoy_base):
         base_df, raw_df = yoy_base
-        result = LaggedYOYGrowthBenchmark(params, lags=[2]).compute(base_df, raw_df)
-        assert "SALES__YOY_GROWTH__DAILY__LAG2_BENCHMARK" in result.columns
+        result = LaggedYOYGrowthBenchmark(params, periods=[("daily", 1)], num_lags=2).compute(base_df, raw_df)
+        assert "SALES__YOY_GROWTH__DAILY__LAG1DAILY_BENCHMARK" in result.columns
+        assert "SALES__YOY_GROWTH__DAILY__LAG2DAILY_BENCHMARK" in result.columns
 
     def test_lagged_values_shift(self, params, yoy_base):
         base_df, raw_df = yoy_base
-        # lag=1: benchmark at date D = base value at D-1
-        result = LaggedYOYGrowthBenchmark(params, lags=[1]).compute(base_df, raw_df)
-        col = "SALES__YOY_GROWTH__DAILY__LAG1_BENCHMARK"
+        # 1 lag of 1-day period: benchmark at date D = base value at D-1
+        result = LaggedYOYGrowthBenchmark(params, periods=[("daily", 1)], num_lags=1).compute(base_df, raw_df)
+        col = "SALES__YOY_GROWTH__DAILY__LAG1DAILY_BENCHMARK"
         base_vals = base_df["SALES__YOY_GROWTH__DAILY"].to_list()
         lag_vals = result[col].to_list()
         # first row: 1 day ago doesn't exist → null
@@ -59,11 +60,18 @@ class TestLaggedYOYGrowthBenchmark:
         if base_vals[3] is not None:
             assert lag_vals[4] == pytest.approx(base_vals[3])
 
-    def test_default_lags(self, params, yoy_base):
+    def test_default_periods(self, params, yoy_base):
         base_df, raw_df = yoy_base
         result = LaggedYOYGrowthBenchmark(params).compute(base_df, raw_df)
-        for lag in [7, 14, 28, 91]:
-            assert f"SALES__YOY_GROWTH__DAILY__LAG{lag}_BENCHMARK" in result.columns
+        # default: periods=[("weekly",7),("monthly",28),("quarterly",91)], num_lags=1
+        for name in ["WEEKLY", "MONTHLY", "QUARTERLY"]:
+            assert f"SALES__YOY_GROWTH__DAILY__LAG1{name}_BENCHMARK" in result.columns
+
+    def test_multiple_lags(self, params, yoy_base):
+        base_df, raw_df = yoy_base
+        result = LaggedYOYGrowthBenchmark(params, periods=[("daily", 1)], num_lags=3).compute(base_df, raw_df)
+        for n in [1, 2, 3]:
+            assert f"SALES__YOY_GROWTH__DAILY__LAG{n}DAILY_BENCHMARK" in result.columns
 
 
 class TestLaggedPOPGrowthBenchmark:
@@ -74,10 +82,11 @@ class TestLaggedPOPGrowthBenchmark:
             "SALES": [float(i + 1) for i in range(10)],
         })
         base_df = POPGrowthBaseFeature(params, windows=[("daily", 1)]).compute(raw)
-        result = LaggedPOPGrowthBenchmark(params, lags=[2]).compute(base_df, raw)
-        assert "SALES__POP_GROWTH__DAILY__LAG2_BENCHMARK" in result.columns
+        result = LaggedPOPGrowthBenchmark(params, periods=[("daily", 1)], num_lags=2).compute(base_df, raw)
+        assert "SALES__POP_GROWTH__DAILY__LAG1DAILY_BENCHMARK" in result.columns
+        assert "SALES__POP_GROWTH__DAILY__LAG2DAILY_BENCHMARK" in result.columns
 
-    def test_default_lags(self, params):
+    def test_default_periods(self, params):
         raw = pl.DataFrame({
             "specid": ["A"] * 10,
             "DATADATE": [date(2023, 1, i + 1) for i in range(10)],
@@ -85,8 +94,9 @@ class TestLaggedPOPGrowthBenchmark:
         })
         base_df = POPGrowthBaseFeature(params, windows=[("daily", 1)]).compute(raw)
         result = LaggedPOPGrowthBenchmark(params).compute(base_df, raw)
-        for lag in [7, 14, 28, 91]:
-            assert f"SALES__POP_GROWTH__DAILY__LAG{lag}_BENCHMARK" in result.columns
+        # default: periods=[("weekly",7),("monthly",28),("quarterly",91)], num_lags=1
+        for name in ["WEEKLY", "MONTHLY", "QUARTERLY"]:
+            assert f"SALES__POP_GROWTH__DAILY__LAG1{name}_BENCHMARK" in result.columns
 
 from kpi_metrics.base_features import RollingSumBaseFeature
 from kpi_metrics.benchmarks import (
@@ -111,35 +121,55 @@ def rolling_base(params):
 class TestLaggedRollingSumBenchmark:
     def test_output_columns(self, params, rolling_base):
         base_df, raw_df = rolling_base
-        result = LaggedRollingSumBenchmark(params, lags=[2]).compute(base_df, raw_df)
-        assert "SALES__ROLLING_SUM__DAILY__LAG2_BENCHMARK" in result.columns
+        result = LaggedRollingSumBenchmark(params, periods=[("daily", 1)], num_lags=2).compute(base_df, raw_df)
+        assert "SALES__ROLLING_SUM__DAILY__LAG1DAILY_BENCHMARK" in result.columns
+        assert "SALES__ROLLING_SUM__DAILY__LAG2DAILY_BENCHMARK" in result.columns
 
     def test_lagged_values(self, params, rolling_base):
         base_df, raw_df = rolling_base
-        result = LaggedRollingSumBenchmark(params, lags=[1]).compute(base_df, raw_df)
-        col = "SALES__ROLLING_SUM__DAILY__LAG1_BENCHMARK"
+        result = LaggedRollingSumBenchmark(params, periods=[("daily", 1)], num_lags=1).compute(base_df, raw_df)
+        col = "SALES__ROLLING_SUM__DAILY__LAG1DAILY_BENCHMARK"
         vals = result[col].to_list()
         assert vals[0] is None
         assert vals[1] == pytest.approx(1.0)
 
-    def test_default_lags(self, params, rolling_base):
+    def test_default_periods(self, params, rolling_base):
         base_df, raw_df = rolling_base
         result = LaggedRollingSumBenchmark(params).compute(base_df, raw_df)
-        for lag in [7, 14, 28, 91]:
-            assert f"SALES__ROLLING_SUM__DAILY__LAG{lag}_BENCHMARK" in result.columns
+        # default: periods=[("weekly",7),("monthly",28),("quarterly",91)], num_lags=1
+        for name in ["WEEKLY", "MONTHLY", "QUARTERLY"]:
+            assert f"SALES__ROLLING_SUM__DAILY__LAG1{name}_BENCHMARK" in result.columns
+
+    def test_multiple_lags(self, params, rolling_base):
+        base_df, raw_df = rolling_base
+        result = LaggedRollingSumBenchmark(params, periods=[("daily", 1)], num_lags=3).compute(base_df, raw_df)
+        for n in [1, 2, 3]:
+            assert f"SALES__ROLLING_SUM__DAILY__LAG{n}DAILY_BENCHMARK" in result.columns
 
 
 class TestLaggedYOYProjectedRollingSumBenchmark:
     def test_output_columns(self, params, rolling_base):
         base_df, raw_df = rolling_base
-        result = LaggedYOYProjectedRollingSumBenchmark(params, lags=[2], yoy_days=3).compute(base_df, raw_df)
-        assert any("YOY_PROJECTED_BENCHMARK" in c for c in result.columns)
+        result = LaggedYOYProjectedRollingSumBenchmark(
+            params, periods=[("daily", 1)], num_lags=2, yoy_days=3
+        ).compute(base_df, raw_df)
+        assert "SALES__ROLLING_SUM__DAILY__LAG1DAILY_YOY_PROJECTED_BENCHMARK" in result.columns
+        assert "SALES__ROLLING_SUM__DAILY__LAG2DAILY_YOY_PROJECTED_BENCHMARK" in result.columns
 
     def test_has_keys_and_date(self, params, rolling_base):
         base_df, raw_df = rolling_base
-        result = LaggedYOYProjectedRollingSumBenchmark(params, lags=[1], yoy_days=3).compute(base_df, raw_df)
+        result = LaggedYOYProjectedRollingSumBenchmark(
+            params, periods=[("daily", 1)], num_lags=1, yoy_days=3
+        ).compute(base_df, raw_df)
         assert "specid" in result.columns
         assert "DATADATE" in result.columns
+
+    def test_default_periods(self, params, rolling_base):
+        base_df, raw_df = rolling_base
+        result = LaggedYOYProjectedRollingSumBenchmark(params, yoy_days=3).compute(base_df, raw_df)
+        # default: periods=[("weekly",7),("monthly",28),("quarterly",91)], num_lags=1
+        for name in ["WEEKLY", "MONTHLY", "QUARTERLY"]:
+            assert f"SALES__ROLLING_SUM__DAILY__LAG1{name}_YOY_PROJECTED_BENCHMARK" in result.columns
 
 
 class TestIBESConsensusSalesGrowthBenchmark:
