@@ -62,6 +62,30 @@ class TestDifferenceComparison:
         assert "specid" in result.columns
         assert "DATADATE" in result.columns
 
+    def test_no_cross_metric_pairs(self):
+        """SALES feature must not be compared against a COUNT benchmark and vice versa."""
+        params = Param(keys=["specid"], metrics=["SALES", "COUNT"])
+        base_df = pl.DataFrame({
+            "specid": ["A", "A"],
+            "DATADATE": [date(2023, 1, 1), date(2023, 1, 2)],
+            "SALES__YOY_GROWTH__DAILY": [0.1, 0.2],
+            "COUNT__YOY_GROWTH__DAILY": [0.3, 0.4],
+        })
+        bench_df = pl.DataFrame({
+            "specid": ["A", "A"],
+            "DATADATE": [date(2023, 1, 1), date(2023, 1, 2)],
+            "SALES__YOY_GROWTH__DAILY__LAG1MONTH": [0.05, 0.15],
+            "COUNT__YOY_GROWTH__DAILY__LAG1MONTH": [0.25, 0.35],
+        })
+        result = DifferenceComparison(params).compute(base_df, bench_df)
+        cols = result.columns
+        # Same-metric pairs should exist
+        assert "SALES__YOY_GROWTH__DAILY__VS__SALES__YOY_GROWTH__DAILY__LAG1MONTH__DIFFERENCE" in cols
+        assert "COUNT__YOY_GROWTH__DAILY__VS__COUNT__YOY_GROWTH__DAILY__LAG1MONTH__DIFFERENCE" in cols
+        # Cross-metric pairs must not exist
+        assert "SALES__YOY_GROWTH__DAILY__VS__COUNT__YOY_GROWTH__DAILY__LAG1MONTH__DIFFERENCE" not in cols
+        assert "COUNT__YOY_GROWTH__DAILY__VS__SALES__YOY_GROWTH__DAILY__LAG1MONTH__DIFFERENCE" not in cols
+
 
 class TestSignComparison:
     def test_sign_values(self, aligned_dfs):

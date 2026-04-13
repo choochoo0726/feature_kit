@@ -4,6 +4,8 @@ import polars as pl
 
 from kpi_metrics.params import Benchmark, Param
 
+_DEFAULT_PERIODS: list[tuple[str, int]] = [("week", 7), ("month", 28), ("quarter", 91)]
+
 
 class ZeroBenchmark(Benchmark):
     """Constant 0.0 benchmark aligned to base_df."""
@@ -25,11 +27,22 @@ class ZeroBenchmark(Benchmark):
 
 
 class LaggedYOYGrowthBenchmark(Benchmark):
-    """YoY growth feature values lagged by K days, one column per lag."""
+    """YoY growth feature values lagged by N multiples of named periods.
 
-    def __init__(self, params: Param, lags: list[int] | None = None) -> None:
+    Each entry in *periods* is a ``(name, days)`` pair.  For every period the
+    benchmark is computed for lags 1 × days, 2 × days, …, num_lags × days,
+    producing columns named ``{feature}__LAG{n}{NAME}``.
+    """
+
+    def __init__(
+        self,
+        params: Param,
+        periods: list[tuple[str, int]] | None = None,
+        num_lags: int = 1,
+    ) -> None:
         self.params = params
-        self.lags = lags if lags is not None else [7, 14, 28, 91]
+        self.periods = periods if periods is not None else _DEFAULT_PERIODS
+        self.num_lags = num_lags
 
     def compute(
         self,
@@ -42,30 +55,44 @@ class LaggedYOYGrowthBenchmark(Benchmark):
         yoy_cols = [c for c in base_df.columns if "__YOY_GROWTH__" in c]
 
         result = base_df.select([*keys, date_col])
-        for lag in self.lags:
-            lag_df = (
-                base_df
-                .select([*keys, date_col, *yoy_cols])
-                .with_columns(
-                    (pl.col(date_col) + pl.duration(days=lag)).alias(date_col)
+        for period_name, period_days in self.periods:
+            for n in range(1, self.num_lags + 1):
+                lag = n * period_days
+                suffix = f"LAG{n}{period_name.upper()}"
+                lag_df = (
+                    base_df
+                    .select([*keys, date_col, *yoy_cols])
+                    .with_columns(
+                        (pl.col(date_col) + pl.duration(days=lag)).alias(date_col)
+                    )
+                    .rename({c: f"{c}__{suffix}" for c in yoy_cols})
                 )
-                .rename({c: f"{c}__LAG{lag}_BENCHMARK" for c in yoy_cols})
-            )
-            bench_cols = [f"{c}__LAG{lag}_BENCHMARK" for c in yoy_cols]
-            result = result.join(
-                lag_df.select([*keys, date_col, *bench_cols]),
-                on=[*keys, date_col],
-                how="left",
-            )
+                bench_cols = [f"{c}__{suffix}" for c in yoy_cols]
+                result = result.join(
+                    lag_df.select([*keys, date_col, *bench_cols]),
+                    on=[*keys, date_col],
+                    how="left",
+                )
         return result
 
 
 class LaggedPOPGrowthBenchmark(Benchmark):
-    """PoP growth feature values lagged by K days, one column per lag."""
+    """PoP growth feature values lagged by N multiples of named periods.
 
-    def __init__(self, params: Param, lags: list[int] | None = None) -> None:
+    Each entry in *periods* is a ``(name, days)`` pair.  For every period the
+    benchmark is computed for lags 1 × days, 2 × days, …, num_lags × days,
+    producing columns named ``{feature}__LAG{n}{NAME}``.
+    """
+
+    def __init__(
+        self,
+        params: Param,
+        periods: list[tuple[str, int]] | None = None,
+        num_lags: int = 1,
+    ) -> None:
         self.params = params
-        self.lags = lags if lags is not None else [7, 14, 28, 91]
+        self.periods = periods if periods is not None else _DEFAULT_PERIODS
+        self.num_lags = num_lags
 
     def compute(
         self,
@@ -78,30 +105,44 @@ class LaggedPOPGrowthBenchmark(Benchmark):
         pop_cols = [c for c in base_df.columns if "__POP_GROWTH__" in c]
 
         result = base_df.select([*keys, date_col])
-        for lag in self.lags:
-            lag_df = (
-                base_df
-                .select([*keys, date_col, *pop_cols])
-                .with_columns(
-                    (pl.col(date_col) + pl.duration(days=lag)).alias(date_col)
+        for period_name, period_days in self.periods:
+            for n in range(1, self.num_lags + 1):
+                lag = n * period_days
+                suffix = f"LAG{n}{period_name.upper()}"
+                lag_df = (
+                    base_df
+                    .select([*keys, date_col, *pop_cols])
+                    .with_columns(
+                        (pl.col(date_col) + pl.duration(days=lag)).alias(date_col)
+                    )
+                    .rename({c: f"{c}__{suffix}" for c in pop_cols})
                 )
-                .rename({c: f"{c}__LAG{lag}_BENCHMARK" for c in pop_cols})
-            )
-            bench_cols = [f"{c}__LAG{lag}_BENCHMARK" for c in pop_cols]
-            result = result.join(
-                lag_df.select([*keys, date_col, *bench_cols]),
-                on=[*keys, date_col],
-                how="left",
-            )
+                bench_cols = [f"{c}__{suffix}" for c in pop_cols]
+                result = result.join(
+                    lag_df.select([*keys, date_col, *bench_cols]),
+                    on=[*keys, date_col],
+                    how="left",
+                )
         return result
 
 
 class LaggedRollingSumBenchmark(Benchmark):
-    """Rolling sum values lagged by K days."""
+    """Rolling sum values lagged by N multiples of named periods.
 
-    def __init__(self, params: Param, lags: list[int] | None = None) -> None:
+    Each entry in *periods* is a ``(name, days)`` pair.  For every period the
+    benchmark is computed for lags 1 × days, 2 × days, …, num_lags × days,
+    producing columns named ``{feature}__LAG{n}{NAME}``.
+    """
+
+    def __init__(
+        self,
+        params: Param,
+        periods: list[tuple[str, int]] | None = None,
+        num_lags: int = 1,
+    ) -> None:
         self.params = params
-        self.lags = lags if lags is not None else [7, 14, 28, 91]
+        self.periods = periods if periods is not None else _DEFAULT_PERIODS
+        self.num_lags = num_lags
 
     def compute(
         self,
@@ -113,23 +154,38 @@ class LaggedRollingSumBenchmark(Benchmark):
         date_col = self.params.date_col
         roll_cols = [c for c in base_df.columns if "__ROLLING_SUM__" in c]
         result = base_df.select([*keys, date_col])
-        for lag in self.lags:
-            lag_df = (
-                base_df.select([*keys, date_col, *roll_cols])
-                .with_columns((pl.col(date_col) + pl.duration(days=lag)).alias(date_col))
-                .rename({c: f"{c}__LAG{lag}_BENCHMARK" for c in roll_cols})
-            )
-            bench_cols = [f"{c}__LAG{lag}_BENCHMARK" for c in roll_cols]
-            result = result.join(lag_df.select([*keys, date_col, *bench_cols]), on=[*keys, date_col], how="left")
+        for period_name, period_days in self.periods:
+            for n in range(1, self.num_lags + 1):
+                lag = n * period_days
+                suffix = f"LAG{n}{period_name.upper()}"
+                lag_df = (
+                    base_df.select([*keys, date_col, *roll_cols])
+                    .with_columns((pl.col(date_col) + pl.duration(days=lag)).alias(date_col))
+                    .rename({c: f"{c}__{suffix}" for c in roll_cols})
+                )
+                bench_cols = [f"{c}__{suffix}" for c in roll_cols]
+                result = result.join(lag_df.select([*keys, date_col, *bench_cols]), on=[*keys, date_col], how="left")
         return result
 
 
 class LaggedYOYProjectedRollingSumBenchmark(Benchmark):
-    """Projected rolling sum: Sum_{yoy_days ago} * Sum_{K days ago} / Sum_{(yoy_days+K) days ago}."""
+    """Projected rolling sum: Sum_{yoy_days ago} * Sum_{lag ago} / Sum_{(yoy_days+lag) ago}.
 
-    def __init__(self, params: Param, lags: list[int], yoy_days: int = 364) -> None:
+    Each entry in *periods* is a ``(name, days)`` pair.  For every period the
+    projection is computed for lags 1 × days, 2 × days, …, num_lags × days,
+    producing columns named ``{feature}__LAG{n}{NAME}_YOY_PROJECTED``.
+    """
+
+    def __init__(
+        self,
+        params: Param,
+        periods: list[tuple[str, int]] | None = None,
+        num_lags: int = 1,
+        yoy_days: int = 364,
+    ) -> None:
         self.params = params
-        self.lags = lags
+        self.periods = periods if periods is not None else _DEFAULT_PERIODS
+        self.num_lags = num_lags
         self.yoy_days = yoy_days
 
     def compute(
@@ -142,39 +198,42 @@ class LaggedYOYProjectedRollingSumBenchmark(Benchmark):
         date_col = self.params.date_col
         roll_cols = [c for c in base_df.columns if "__ROLLING_SUM__" in c]
         result = base_df.select([*keys, date_col])
-        for lag in self.lags:
-            yoy_df = (
-                base_df.select([*keys, date_col, *roll_cols])
-                .with_columns((pl.col(date_col) + pl.duration(days=self.yoy_days)).alias(date_col))
-                .rename({c: f"{c}__YOY" for c in roll_cols})
-            )
-            lag_df = (
-                base_df.select([*keys, date_col, *roll_cols])
-                .with_columns((pl.col(date_col) + pl.duration(days=lag)).alias(date_col))
-                .rename({c: f"{c}__LAG{lag}" for c in roll_cols})
-            )
-            yoy_lag_df = (
-                base_df.select([*keys, date_col, *roll_cols])
-                .with_columns((pl.col(date_col) + pl.duration(days=self.yoy_days + lag)).alias(date_col))
-                .rename({c: f"{c}__YOYLAG{lag}" for c in roll_cols})
-            )
-            joined = (
-                base_df.select([*keys, date_col])
-                .join(yoy_df, on=[*keys, date_col], how="left")
-                .join(lag_df, on=[*keys, date_col], how="left")
-                .join(yoy_lag_df, on=[*keys, date_col], how="left")
-            )
-            proj_exprs = [
-                (pl.col(f"{c}__YOY") * pl.col(f"{c}__LAG{lag}") / pl.col(f"{c}__YOYLAG{lag}"))
-                .alias(f"{c}__LAG{lag}_YOY_PROJECTED_BENCHMARK")
-                for c in roll_cols
-            ]
-            proj_cols = [f"{c}__LAG{lag}_YOY_PROJECTED_BENCHMARK" for c in roll_cols]
-            result = result.join(
-                joined.with_columns(proj_exprs).select([*keys, date_col, *proj_cols]),
-                on=[*keys, date_col],
-                how="left",
-            )
+        yoy_df = (
+            base_df.select([*keys, date_col, *roll_cols])
+            .with_columns((pl.col(date_col) + pl.duration(days=self.yoy_days)).alias(date_col))
+            .rename({c: f"{c}__YOY" for c in roll_cols})
+        )
+        for period_name, period_days in self.periods:
+            for n in range(1, self.num_lags + 1):
+                lag = n * period_days
+                suffix = f"LAG{n}{period_name.upper()}"
+                lag_df = (
+                    base_df.select([*keys, date_col, *roll_cols])
+                    .with_columns((pl.col(date_col) + pl.duration(days=lag)).alias(date_col))
+                    .rename({c: f"{c}__{suffix}" for c in roll_cols})
+                )
+                yoy_lag_df = (
+                    base_df.select([*keys, date_col, *roll_cols])
+                    .with_columns((pl.col(date_col) + pl.duration(days=self.yoy_days + lag)).alias(date_col))
+                    .rename({c: f"{c}__YOY{suffix}" for c in roll_cols})
+                )
+                joined = (
+                    base_df.select([*keys, date_col])
+                    .join(yoy_df, on=[*keys, date_col], how="left")
+                    .join(lag_df, on=[*keys, date_col], how="left")
+                    .join(yoy_lag_df, on=[*keys, date_col], how="left")
+                )
+                proj_exprs = [
+                    (pl.col(f"{c}__YOY") * pl.col(f"{c}__{suffix}") / pl.col(f"{c}__YOY{suffix}"))
+                    .alias(f"{c}__{suffix}_YOY_PROJECTED")
+                    for c in roll_cols
+                ]
+                proj_cols = [f"{c}__{suffix}_YOY_PROJECTED" for c in roll_cols]
+                result = result.join(
+                    joined.with_columns(proj_exprs).select([*keys, date_col, *proj_cols]),
+                    on=[*keys, date_col],
+                    how="left",
+                )
         return result
 
 
