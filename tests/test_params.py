@@ -1,6 +1,6 @@
 import polars as pl
 import pytest
-from kpi_metrics.params import Param, BaseFeature, Benchmark, Comparison, Transformation
+from feature_kit.params import Param, BaseFeature, Benchmark, Comparison, Transformation
 
 
 def test_param_defaults():

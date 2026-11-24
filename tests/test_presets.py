@@ -1,8 +1,8 @@
 import polars as pl
 import pytest
 from datetime import date
-from kpi_metrics import KpiMetricsBuilder, Param
-from kpi_metrics.presets import sales_yoy_vs_zero, sales_rolling_vs_zero
+from feature_kit import FeatureBuilder, Param
+from feature_kit.presets import sales_yoy_vs_zero, sales_rolling_vs_zero
 
 
 @pytest.fixture
@@ -22,11 +22,11 @@ def raw_df():
 class TestPresets:
     def test_sales_yoy_vs_zero_returns_builder(self, params):
         builder = sales_yoy_vs_zero(params)
-        assert isinstance(builder, KpiMetricsBuilder)
+        assert isinstance(builder, FeatureBuilder)
 
     def test_sales_rolling_vs_zero_returns_builder(self, params):
         builder = sales_rolling_vs_zero(params)
-        assert isinstance(builder, KpiMetricsBuilder)
+        assert isinstance(builder, FeatureBuilder)
 
     def test_sales_yoy_vs_zero_compute_runs(self, params, raw_df):
         builder = sales_yoy_vs_zero(params)
@@ -45,16 +45,16 @@ class TestPresets:
 
 class TestPublicAPI:
     def test_import_param(self):
-        from kpi_metrics import Param
+        from feature_kit import Param
         p = Param(keys=["specid"], metrics=["SALES"])
         assert p.date_col == "DATADATE"
 
     def test_import_builder(self):
-        from kpi_metrics import KpiMetricsBuilder
-        assert KpiMetricsBuilder is not None
+        from feature_kit import FeatureBuilder
+        assert FeatureBuilder is not None
 
     def test_import_base_features(self):
-        from kpi_metrics import (
+        from feature_kit import (
             RollingSumBaseFeature,
             YOYGrowthBaseFeature,
             POPGrowthBaseFeature,
@@ -62,13 +62,13 @@ class TestPublicAPI:
         assert RollingSumBaseFeature is not None
 
     def test_import_benchmarks(self):
-        from kpi_metrics import ZeroBenchmark, LaggedYOYGrowthBenchmark
+        from feature_kit import ZeroBenchmark, LaggedYOYGrowthBenchmark
         assert ZeroBenchmark is not None
 
     def test_import_comparisons(self):
-        from kpi_metrics import DifferenceComparison, ZScoreComparison
+        from feature_kit import DifferenceComparison, ZScoreComparison
         assert DifferenceComparison is not None
 
     def test_import_transformations(self):
-        from kpi_metrics import ClipTransformation, WinsorizeTransformation
+        from feature_kit import ClipTransformation, WinsorizeTransformation
         assert ClipTransformation is not None

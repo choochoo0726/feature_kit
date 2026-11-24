@@ -3,7 +3,7 @@ from itertools import product as iproduct
 
 import polars as pl
 
-from kpi_metrics.params import BaseFeature, Param
+from feature_kit.params import BaseFeature, Param
 
 _DEFAULT_ROLLING_WINDOWS: list[tuple[str, int]] = [
     ("daily", 1),
@@ -46,7 +46,36 @@ def _rolling_sum(
 
 
 class RollingSumBaseFeature(BaseFeature):
-    """N-day rolling sum of each metric, grouped by entity keys."""
+    """N-day rolling sum of each metric, grouped by entity keys.
+
+    $$
+    S^{(w)}_t = \\sum_{i=0}^{w-1} x_{t-i}
+    $$
+
+    The window counts **rows**, not calendar days, and uses
+    ``min_samples=1``: the first ``w - 1`` rows of each entity hold partial
+    sums rather than nulls.
+
+    Parameters
+    ----------
+    params : Param
+        Shared column configuration.
+    windows : list[tuple[str, int]], optional
+        ``(name, size)`` pairs. ``name`` is upper-cased into the column name.
+        Defaults to ``[("daily", 1), ("weekly", 7), ("quadweekly", 28),
+        ("quarterly", 91)]``.
+
+    Notes
+    -----
+    Output columns: ``{METRIC}__ROLLING_SUM__{NAME}``, e.g.
+    ``SALES__ROLLING_SUM__WEEKLY``.
+
+    Examples
+    --------
+    >>> base = RollingSumBaseFeature(params, windows=[("weekly", 7)])
+    >>> base.compute(raw_df).columns  # doctest: +SKIP
+    ['specid', 'DATADATE', 'SALES__ROLLING_SUM__WEEKLY']
+    """
 
     def __init__(
         self,
@@ -71,7 +100,34 @@ class RollingSumBaseFeature(BaseFeature):
 
 
 class YOYGrowthBaseFeature(BaseFeature):
-    """YoY growth of N-day rolling sum: (sum_t - sum_{t-yoy_days}) / abs(sum_{t-yoy_days})."""
+    """Year-over-year growth of an N-day rolling sum.
+
+    $$
+    g_t = \\frac{S^{(w)}_t - S^{(w)}_{t - \\text{yoy\\_days}}}
+               {\\left|S^{(w)}_{t - \\text{yoy\\_days}}\\right|}
+    $$
+
+    The rolling sum ``S`` is row-based (see ``RollingSumBaseFeature``), but
+    the prior-year value is matched by **exact calendar date**
+    (``date - yoy_days``). If that date is missing for the entity, the growth
+    is null. A zero prior-year sum gives ``inf``/``NaN``.
+
+    Parameters
+    ----------
+    params : Param
+        Shared column configuration.
+    windows : list[tuple[str, int]], optional
+        ``(name, size)`` rolling-sum windows. Defaults to
+        ``[("quadweekly", 28), ("quarterly", 91)]``.
+    yoy_days : int, default 364
+        Calendar-day offset of the comparison period. 364 (52 weeks) keeps
+        the day-of-week aligned.
+
+    Notes
+    -----
+    Output columns: ``{METRIC}__YOY_GROWTH__{NAME}``, e.g.
+    ``SALES__YOY_GROWTH__QUADWEEKLY``.
+    """
 
     def __init__(
         self,
@@ -134,9 +190,29 @@ class YOYGrowthBaseFeature(BaseFeature):
 
 
 class POPGrowthBaseFeature(BaseFeature):
-    """Period-over-period growth: (rolling_sum_t - rolling_sum_{t-window_days}) / abs(rolling_sum_{t-window_days}).
+    """Period-over-period growth of an N-day rolling sum.
 
-    The PoP lag equals the window size in days (e.g., 28-day window compared to 28 days ago).
+    $$
+    g_t = \\frac{S^{(w)}_t - S^{(w)}_{t-w}}{\\left|S^{(w)}_{t-w}\\right|}
+    $$
+
+    The lag equals the window size, so consecutive non-overlapping periods
+    are compared (e.g. the last 28 days vs. the 28 days before). The prior
+    value is matched by exact calendar date (``date - w`` days); a missing
+    prior date gives null.
+
+    Parameters
+    ----------
+    params : Param
+        Shared column configuration.
+    windows : list[tuple[str, int]], optional
+        ``(name, size)`` windows. Defaults to
+        ``[("quadweekly", 28), ("quarterly", 91)]``.
+
+    Notes
+    -----
+    Output columns: ``{METRIC}__POP_GROWTH__{NAME}``, e.g.
+    ``SALES__POP_GROWTH__QUARTERLY``.
     """
 
     def __init__(

@@ -1,10 +1,10 @@
-# kpi_metrics
+# feature_kit
 
 A Python library for computing KPI features from daily alternative data, designed to support earnings surprise prediction and consensus change analysis. Built on [Polars](https://pola.rs/) for fast, memory-efficient computation.
 
 ## Overview
 
-`kpi_metrics` follows a **builder pattern** with four independently composable components:
+`feature_kit` follows a **builder pattern** with four independently composable components:
 
 ```
 raw_df
@@ -14,13 +14,21 @@ raw_df
                     └── Transformation → clip, winsorize, ramp up/down
 ```
 
-Each component is independently callable via `.compute()`, or they can be orchestrated together through `KpiMetricsBuilder`.
+Each component is independently callable via `.compute()`, or they can be orchestrated together through `FeatureBuilder`.
+
+## Documentation
+
+The full docs (user guide, recipes, known limitations and API reference) live in `docs/` and build with MkDocs Material:
+
+```bash
+uv run --group docs mkdocs serve   # live preview at http://127.0.0.1:8000
+```
 
 ## Installation
 
 ```bash
 # Install with uv (recommended)
-uv add kpi-metrics
+uv add feature-kit
 
 # Or clone and install for development
 git clone git@github.com:choochoo0726/kpi_metrics.git
@@ -60,8 +68,8 @@ raw_df = pl.DataFrame({
 The fastest way to get started is with the built-in presets:
 
 ```python
-from kpi_metrics import KpiMetricsBuilder, Param
-from kpi_metrics.presets import sales_yoy_vs_zero, sales_rolling_vs_zero
+from feature_kit import FeatureBuilder, Param
+from feature_kit.presets import sales_yoy_vs_zero, sales_rolling_vs_zero
 
 params = Param(keys=["specid"], metrics=["SALES"])
 
@@ -85,7 +93,7 @@ result = builder.compute(raw_df)
 ### 1. Define Parameters
 
 ```python
-from kpi_metrics import Param
+from feature_kit import Param
 
 params = Param(
     keys=["specid"],       # entity identifier column(s)
@@ -99,7 +107,7 @@ params = Param(
 Base features transform raw metrics into comparable signals.
 
 ```python
-from kpi_metrics import RollingSumBaseFeature, YOYGrowthBaseFeature, POPGrowthBaseFeature
+from feature_kit import RollingSumBaseFeature, YOYGrowthBaseFeature, POPGrowthBaseFeature
 
 # Rolling sum over custom windows: list of (name, days) tuples
 base = RollingSumBaseFeature(params, windows=[("weekly", 7), ("monthly", 28)])
@@ -130,7 +138,7 @@ base_df = base.compute(raw_df)
 Benchmarks define what each feature is compared against.
 
 ```python
-from kpi_metrics import (
+from feature_kit import (
     ZeroBenchmark,
     LaggedYOYGrowthBenchmark,
     LaggedPOPGrowthBenchmark,
@@ -169,7 +177,7 @@ bench_df = bench.compute(base_df, raw_df)
 Comparisons measure how the base feature differs from its benchmark.
 
 ```python
-from kpi_metrics import (
+from feature_kit import (
     DifferenceComparison,
     SignComparison,
     RatioComparison,
@@ -208,7 +216,7 @@ comp_df = comp.compute(base_df, bench_df)
 Transformations normalize or scale the comparison output.
 
 ```python
-from kpi_metrics import (
+from feature_kit import (
     ClipTransformation,
     WinsorizeTransformation,
     RampUpTransformation,
@@ -231,11 +239,11 @@ t = RampDownTransformation(age_col="age_days", min_age=0, max_age=365)
 result_df = t.compute(comp_df)
 ```
 
-### 6. Assemble with KpiMetricsBuilder
+### 6. Assemble with FeatureBuilder
 
 ```python
-from kpi_metrics import (
-    KpiMetricsBuilder, Param,
+from feature_kit import (
+    FeatureBuilder, Param,
     YOYGrowthBaseFeature,
     ZeroBenchmark, LaggedYOYGrowthBenchmark,
     DifferenceComparison, ZScoreComparison,
@@ -244,7 +252,7 @@ from kpi_metrics import (
 
 params = Param(keys=["specid"], metrics=["SALES"])
 
-builder = KpiMetricsBuilder(
+builder = FeatureBuilder(
     params=params,
     base_feature=YOYGrowthBaseFeature(params, windows=[("quarterly", 91)]),
     benchmarks=[
@@ -279,7 +287,7 @@ ibes_df = pl.DataFrame({
     "IBES_QUARTERLY_SALES_GROWTH_BENCHMARK": [0.05, 0.08],
 })
 
-builder = KpiMetricsBuilder(
+builder = FeatureBuilder(
     params=params,
     base_feature=YOYGrowthBaseFeature(params),
     benchmarks=[IBESConsensusSalesGrowthBenchmark(params, freq="quarterly")],
@@ -329,7 +337,7 @@ result = builder.compute(raw_df, external_dfs={"ibes": ibes_df})
 | Class | Behavior | Key params |
 |-------|---------|------------|
 | `ClipTransformation` | Hard clip to `[lower, upper]` | `lower`, `upper` |
-| `WinsorizeTransformation` | Clip to quantile range | `lower_q=0.01`, `upper_q=0.99` |
+| `WinsorizeTransformation` | Clip to quantile range, per date across entities (point-in-time safe) | `lower_q=0.01`, `upper_q=0.99`, `scope="date"` (`"pooled"` = full sample, look-ahead) |
 | `RampUpTransformation` | Multiply by `(age - min) / (max - min)` clamped to [0,1] | `age_col`, `min_age`, `max_age` |
 | `RampDownTransformation` | Multiply by `1 - (age - min) / (max - min)` clamped to [0,1] | `age_col`, `min_age`, `max_age` |
 
