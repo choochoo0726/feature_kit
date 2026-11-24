@@ -84,4 +84,29 @@ The underscore-prefixed helpers are internal and may change; copy them if you ne
 
 ## Custom transformation
 
-Take a frame and return one with the same columns. Leave key and date columns untouched.
+Take a frame and return one with the same columns, leaving key and date columns untouched. Two optional hooks connect it to `FeatureBuilder`:
+
+- `self.params`: if it is `None`, the builder sets it (on a copy) to the builder's `Param`, so your transformation knows the key and date column names.
+- `required_columns`: extra input columns you need (e.g. a weight). The builder joins them from the raw input for your step only and drops them afterwards.
+
+```python
+from feature_kit.params import Transformation
+
+
+class WeightTransformation(Transformation):
+    """Multiply every signal by a per-row weight column."""
+
+    def __init__(self, weight_col: str, params: Param | None = None) -> None:
+        self.weight_col, self.params = weight_col, params
+
+    @property
+    def required_columns(self) -> list[str]:
+        return [self.weight_col]
+
+    def compute(self, df):
+        p = self.params
+        skip = {*(p.keys if p else ["specid"]), p.date_col if p else "DATADATE", self.weight_col}
+        return df.with_columns(
+            pl.col(c) * pl.col(self.weight_col) for c in df.columns if c not in skip
+        )
+```

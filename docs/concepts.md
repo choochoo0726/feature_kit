@@ -49,12 +49,12 @@ This has two consequences:
 
 A comparison receives the base-feature frame and one benchmark frame, then builds pairs:
 
-- A benchmark column **with** a metric prefix (`SALES__...`) is paired only with features of the **same metric**, so `SALES` growth is never compared with lagged `TXN` growth.
-- A benchmark column **without** a metric prefix (`ZERO_BENCHMARK`, `IBES_*`) is paired with **every** feature.
-- Pairing does **not** filter by window. With windows `quadweekly` and `quarterly`, the 28-day feature is compared with the lagged 91-day benchmark as well as the lagged 28-day one. See [Known limitations](limitations.md#comparisons-pair-across-windows).
+1. A benchmark column **derived from a specific feature** (named `{feature}__...`, e.g. `SALES__YOY_GROWTH__QUADWEEKLY__LAG1MONTH`) is paired **only with that feature**: same metric *and* same window. The 28-day feature is never compared with the lagged 91-day benchmark, and `SALES` is never compared with lagged `TXN`.
+2. A benchmark column with a metric prefix that doesn't match a whole feature name (e.g. from a custom benchmark) is paired with every feature of that metric. This rule needs `params` on the comparison.
+3. A benchmark column **without** a metric prefix (`ZERO_BENCHMARK`, `IBES_*`) is paired with **every** feature.
 
 !!! note
-    Same-metric filtering needs `params`. `DifferenceComparison`, `SignComparison` and `RatioComparison` accept `params=None`, and in that case they pair every feature with every benchmark column, cross-metric pairs included. Pass `params` unless you want that.
+    `DifferenceComparison`, `SignComparison` and `RatioComparison` accept `params=None`. Rules 1 and 3 still apply, but rule 2 is skipped, so such a benchmark column is paired with every feature. Pass `params` to be safe.
 
 ## How `FeatureBuilder` combines stages
 
@@ -67,10 +67,10 @@ A comparison receives the base-feature frame and one benchmark frame, then build
 
 The output contains **only** keys, date and comparison columns. Base features and benchmarks are not included; compute them separately if you need them.
 
-The number of output columns grows multiplicatively. For a metric-prefixed benchmark such as a lagged one:
+The number of output columns grows multiplicatively:
 
 ```text
-n_metrics × n_windows × (n_windows × n_benchmark_columns_per_window) × n_comparisons
+n_metrics × n_windows × n_benchmark_columns_per_feature × n_comparisons
 ```
 
-For example, 2 metrics × 2 windows with `LaggedYOYGrowthBenchmark` (3 default periods × `num_lags=2`) and 3 comparisons gives 2 × 2 × (2 × 6) × 3 = **144** columns. Half of them are cross-window pairs.
+For example, 2 metrics × 2 windows with `LaggedYOYGrowthBenchmark` (3 default periods × `num_lags=2` = 6 columns per feature) and 3 comparisons gives 2 × 2 × 6 × 3 = **72** columns.

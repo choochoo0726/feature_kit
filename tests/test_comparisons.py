@@ -86,6 +86,61 @@ class TestDifferenceComparison:
         assert "SALES__YOY_GROWTH__DAILY__VS__COUNT__YOY_GROWTH__DAILY__LAG1MONTH__DIFFERENCE" not in cols
         assert "COUNT__YOY_GROWTH__DAILY__VS__SALES__YOY_GROWTH__DAILY__LAG1MONTH__DIFFERENCE" not in cols
 
+    def test_no_cross_window_pairs(self, params):
+        """A feature is only compared with benchmarks derived from that same feature (window)."""
+        base_df = pl.DataFrame({
+            "specid": ["A"],
+            "DATADATE": [date(2023, 1, 1)],
+            "SALES__YOY_GROWTH__QUADWEEKLY": [0.1],
+            "SALES__YOY_GROWTH__QUARTERLY": [0.2],
+        })
+        bench_df = pl.DataFrame({
+            "specid": ["A"],
+            "DATADATE": [date(2023, 1, 1)],
+            "SALES__YOY_GROWTH__QUADWEEKLY__LAG1WEEK": [0.05],
+            "SALES__YOY_GROWTH__QUARTERLY__LAG1WEEK": [0.15],
+        })
+        result = DifferenceComparison(params).compute(base_df, bench_df)
+        signal_cols = [c for c in result.columns if "__VS__" in c]
+        assert signal_cols == [
+            "SALES__YOY_GROWTH__QUADWEEKLY__VS__SALES__YOY_GROWTH__QUADWEEKLY__LAG1WEEK__DIFFERENCE",
+            "SALES__YOY_GROWTH__QUARTERLY__VS__SALES__YOY_GROWTH__QUARTERLY__LAG1WEEK__DIFFERENCE",
+        ]
+        assert result[signal_cols[1]].to_list() == pytest.approx([0.05])
+
+    def test_derived_benchmark_pairs_with_source_even_without_params(self):
+        """Without params, a feature-derived benchmark still pairs only with its source feature."""
+        base_df = pl.DataFrame({
+            "specid": ["A"],
+            "DATADATE": [date(2023, 1, 1)],
+            "SALES__YOY_GROWTH__DAILY": [0.1],
+            "COUNT__YOY_GROWTH__DAILY": [0.3],
+        })
+        bench_df = pl.DataFrame({
+            "specid": ["A"],
+            "DATADATE": [date(2023, 1, 1)],
+            "SALES__YOY_GROWTH__DAILY__LAG1MONTH": [0.05],
+        })
+        result = DifferenceComparison().compute(base_df, bench_df)
+        assert [c for c in result.columns if "__VS__" in c] == [
+            "SALES__YOY_GROWTH__DAILY__VS__SALES__YOY_GROWTH__DAILY__LAG1MONTH__DIFFERENCE",
+        ]
+
+    def test_unprefixed_benchmark_pairs_with_every_feature(self, params):
+        base_df = pl.DataFrame({
+            "specid": ["A"],
+            "DATADATE": [date(2023, 1, 1)],
+            "SALES__YOY_GROWTH__QUADWEEKLY": [0.1],
+            "SALES__YOY_GROWTH__QUARTERLY": [0.2],
+        })
+        bench_df = pl.DataFrame({
+            "specid": ["A"],
+            "DATADATE": [date(2023, 1, 1)],
+            "ZERO_BENCHMARK": [0.0],
+        })
+        result = DifferenceComparison(params).compute(base_df, bench_df)
+        assert len([c for c in result.columns if "__VS__" in c]) == 2
+
 
 class TestSignComparison:
     def test_sign_values(self, aligned_dfs):

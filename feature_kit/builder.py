@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import copy
+
 import polars as pl
 
 from feature_kit.params import BaseFeature, Benchmark, Comparison, Param, Transformation
@@ -104,6 +106,38 @@ class FeatureBuilder:
 
         # Apply transformations sequentially
         for transformation in self.transformations:
-            result = transformation.compute(result)
+            result = self._apply_transformation(transformation, result, df)
 
         return result
+
+    def _apply_transformation(
+        self,
+        transformation: Transformation,
+        result: pl.DataFrame,
+        raw_df: pl.DataFrame,
+    ) -> pl.DataFrame:
+        """Run one transformation on the merged signals.
+
+        Fills in ``params`` (on a copy) when the transformation has none, and
+        temporarily joins any ``required_columns`` (e.g. an age column) from
+        the raw input, dropping them again afterwards so the output stays
+        keys + date + signal columns only.
+        """
+        if transformation.params is None:
+            transformation = copy.copy(transformation)
+            transformation.params = self.params
+
+        shared = [*self.params.keys, self.params.date_col]
+        extra = [c for c in dict.fromkeys(transformation.required_columns) if c not in result.columns]
+        if not extra:
+            return transformation.compute(result)
+
+        missing = [c for c in extra if c not in raw_df.columns]
+        if missing:
+            raise ValueError(
+                f"{type(transformation).__name__} requires column(s) {missing}, "
+                "which are not in the input DataFrame"
+            )
+        lookup = raw_df.select([*shared, *extra]).unique(subset=shared, keep="first")
+        joined = result.join(lookup, on=shared, how="left")
+        return transformation.compute(joined).drop(extra)

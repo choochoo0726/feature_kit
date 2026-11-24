@@ -32,9 +32,6 @@ Every component takes a **long-format Polars DataFrame** with one row per entity
 !!! warning "Use one row per calendar day, with no gaps"
     Rolling windows count **rows**, while lags and YoY offsets are matched by **calendar date**. These agree only when every entity has a row for every day. Fill missing days (e.g. with zero or null) before computing. See [Known limitations](limitations.md#rolling-windows-count-rows-not-days).
 
-!!! warning "Keep the default column names for now"
-    Transformations currently assume the key and date columns are named `specid` and `DATADATE`. See [Known limitations](limitations.md#transformations-assume-specid-and-datadate).
-
 ## End-to-end example
 
 This builds two years of synthetic daily sales for three companies and computes YoY-growth signals.

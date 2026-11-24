@@ -24,15 +24,29 @@ def _pair_cols(
 ) -> list[tuple[str, str]]:
     """Return valid (feature_col, bench_col) pairs.
 
-    When *metrics* is provided, a benchmark column whose name starts with a
-    known metric prefix is only paired with feature columns from that same
-    metric.  Benchmark columns with no metric prefix (e.g. ``ZERO_BENCHMARK``)
-    are paired with every feature column as before.
+    Rules, applied to each benchmark column in order:
+
+    1. A benchmark column derived from a specific feature column (its name
+       starts with ``{feature_col}__``, e.g. ``SALES__YOY_GROWTH__QUARTERLY__LAG1WEEK``)
+       is paired **only** with that feature. This prevents cross-window and
+       cross-metric pairs.
+    2. Otherwise, when *metrics* is provided, a benchmark column with a known
+       metric prefix is paired only with feature columns of that same metric.
+    3. Otherwise (e.g. ``ZERO_BENCHMARK``, IBES columns) the benchmark column
+       is paired with every feature column.
     """
+    # The feature each benchmark column was derived from, if any (longest match wins).
+    source = {
+        bc: max((fc for fc in feature_cols if bc.startswith(fc + "__")), key=len, default=None)
+        for bc in bench_cols
+    }
     pairs = []
     for fc in feature_cols:
         for bc in bench_cols:
-            if metrics:
+            if source[bc] is not None:
+                if source[bc] != fc:
+                    continue
+            elif metrics:
                 fc_metric = next((m for m in metrics if fc.startswith(m + "__")), None)
                 bc_metric = next((m for m in metrics if bc.startswith(m + "__")), None)
                 if fc_metric and bc_metric and fc_metric != bc_metric:
@@ -47,10 +61,12 @@ class DifferenceComparison(Comparison):
     Parameters
     ----------
     params : Param, optional
-        Used only for same-metric pairing. If given, a metric-prefixed
-        benchmark column (``SALES__...``) is paired only with features of the
-        same metric. If omitted, **every** feature is paired with **every**
-        benchmark column, including cross-metric pairs.
+        Used only for pairing. A benchmark column derived from a feature
+        (``{feature}__...``) is always paired only with that feature. If
+        ``params`` is given, other metric-prefixed benchmark columns are
+        paired only with features of the same metric; if omitted, they are
+        paired with every feature. Unprefixed columns (``ZERO_BENCHMARK``)
+        pair with every feature either way.
 
     Notes
     -----

@@ -337,7 +337,7 @@ result = builder.compute(raw_df, external_dfs={"ibes": ibes_df})
 | Class | Behavior | Key params |
 |-------|---------|------------|
 | `ClipTransformation` | Hard clip to `[lower, upper]` | `lower`, `upper` |
-| `WinsorizeTransformation` | Clip to quantile range | `lower_q=0.01`, `upper_q=0.99` |
+| `WinsorizeTransformation` | Clip to quantile range, per date across entities (point-in-time safe) | `lower_q=0.01`, `upper_q=0.99`, `scope="date"` (`"pooled"` = full sample, look-ahead) |
 | `RampUpTransformation` | Multiply by `(age - min) / (max - min)` clamped to [0,1] | `age_col`, `min_age`, `max_age` |
 | `RampDownTransformation` | Multiply by `1 - (age - min) / (max - min)` clamped to [0,1] | `age_col`, `min_age`, `max_age` |
 

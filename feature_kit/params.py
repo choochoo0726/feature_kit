@@ -110,7 +110,29 @@ class Comparison(ABC):
 
 
 class Transformation(ABC):
-    """Stage 4: post-process comparison columns (clip, winsorize, scale)."""
+    """Stage 4: post-process comparison columns (clip, winsorize, scale).
+
+    Every column except ``params.keys``, ``params.date_col`` and
+    ``required_columns`` is treated as a feature. Without ``params`` the
+    defaults ``specid`` / ``DATADATE`` are assumed.
+
+    Attributes
+    ----------
+    params : Param or None
+        Column configuration. ``FeatureBuilder`` supplies its own ``params``
+        to any transformation created without one.
+    """
+
+    params: Param | None = None
+
+    @property
+    def required_columns(self) -> list[str]:
+        """Extra input columns this transformation reads but does not modify.
+
+        ``FeatureBuilder`` joins these from the raw input before running the
+        transformation and drops them afterwards. Defaults to none.
+        """
+        return []
 
     @abstractmethod
     def compute(self, df: pl.DataFrame) -> pl.DataFrame:
