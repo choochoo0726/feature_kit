@@ -31,8 +31,8 @@ uv run --group docs mkdocs serve   # live preview at http://127.0.0.1:8000
 uv add feature-kit
 
 # Or clone and install for development
-git clone git@github.com:choochoo0726/kpi_metrics.git
-cd kpi_metrics
+git clone git@github.com:choochoo0726/feature_kit.git
+cd feature_kit
 uv sync
 ```
 
