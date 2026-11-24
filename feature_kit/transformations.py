@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import polars as pl
 
-from kpi_metrics.params import Transformation
+from feature_kit.params import Transformation
 
 
 def _feature_cols(df: pl.DataFrame, non_feature: set[str]) -> list[str]:

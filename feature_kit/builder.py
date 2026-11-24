@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import polars as pl
 
-from kpi_metrics.params import BaseFeature, Benchmark, Comparison, Param, Transformation
+from feature_kit.params import BaseFeature, Benchmark, Comparison, Param, Transformation
 
 
-class KpiMetricsBuilder:
+class FeatureBuilder:
     """Orchestrate base_feature → benchmarks → comparisons → transformations."""
 
     def __init__(

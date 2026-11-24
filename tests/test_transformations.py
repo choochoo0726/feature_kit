@@ -1,7 +1,7 @@
 import polars as pl
 import pytest
 from datetime import date
-from kpi_metrics.transformations import (
+from feature_kit.transformations import (
     ClipTransformation,
     WinsorizeTransformation,
     RampUpTransformation,

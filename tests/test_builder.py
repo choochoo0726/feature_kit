@@ -1,12 +1,12 @@
 import polars as pl
 import pytest
 from datetime import date
-from kpi_metrics.params import Param
-from kpi_metrics.base_features import RollingSumBaseFeature
-from kpi_metrics.benchmarks import ZeroBenchmark
-from kpi_metrics.comparisons import DifferenceComparison
-from kpi_metrics.transformations import ClipTransformation
-from kpi_metrics.builder import KpiMetricsBuilder
+from feature_kit.params import Param
+from feature_kit.base_features import RollingSumBaseFeature
+from feature_kit.benchmarks import ZeroBenchmark
+from feature_kit.comparisons import DifferenceComparison
+from feature_kit.transformations import ClipTransformation
+from feature_kit.builder import FeatureBuilder
 
 
 @pytest.fixture
@@ -23,9 +23,9 @@ def raw_df():
     })
 
 
-class TestKpiMetricsBuilderBasic:
+class TestFeatureBuilderBasic:
     def test_returns_dataframe(self, params, raw_df):
-        builder = KpiMetricsBuilder(
+        builder = FeatureBuilder(
             params=params,
             base_feature=RollingSumBaseFeature(params, windows=[("daily", 1)]),
             benchmarks=[ZeroBenchmark(params)],
@@ -35,7 +35,7 @@ class TestKpiMetricsBuilderBasic:
         assert isinstance(result, pl.DataFrame)
 
     def test_output_contains_keys_and_date(self, params, raw_df):
-        builder = KpiMetricsBuilder(
+        builder = FeatureBuilder(
             params=params,
             base_feature=RollingSumBaseFeature(params, windows=[("daily", 1)]),
             benchmarks=[ZeroBenchmark(params)],
@@ -46,7 +46,7 @@ class TestKpiMetricsBuilderBasic:
         assert "DATADATE" in result.columns
 
     def test_output_has_comparison_columns(self, params, raw_df):
-        builder = KpiMetricsBuilder(
+        builder = FeatureBuilder(
             params=params,
             base_feature=RollingSumBaseFeature(params, windows=[("daily", 1)]),
             benchmarks=[ZeroBenchmark(params)],
@@ -57,7 +57,7 @@ class TestKpiMetricsBuilderBasic:
         assert len(comp_cols) > 0
 
     def test_no_raw_metric_in_output(self, params, raw_df):
-        builder = KpiMetricsBuilder(
+        builder = FeatureBuilder(
             params=params,
             base_feature=RollingSumBaseFeature(params, windows=[("daily", 1)]),
             benchmarks=[ZeroBenchmark(params)],
@@ -67,9 +67,9 @@ class TestKpiMetricsBuilderBasic:
         assert "SALES" not in result.columns
 
 
-class TestKpiMetricsBuilderTransformations:
+class TestFeatureBuilderTransformations:
     def test_transformation_applied(self, params, raw_df):
-        builder = KpiMetricsBuilder(
+        builder = FeatureBuilder(
             params=params,
             base_feature=RollingSumBaseFeature(params, windows=[("daily", 1)]),
             benchmarks=[ZeroBenchmark(params)],
@@ -83,10 +83,10 @@ class TestKpiMetricsBuilderTransformations:
             assert all(0.0 <= v <= 50.0 for v in vals)
 
 
-class TestKpiMetricsBuilderMultipleBenchmarks:
+class TestFeatureBuilderMultipleBenchmarks:
     def test_multiple_comparisons_produce_multiple_columns(self, params, raw_df):
-        from kpi_metrics.comparisons import SignComparison
-        builder = KpiMetricsBuilder(
+        from feature_kit.comparisons import SignComparison
+        builder = FeatureBuilder(
             params=params,
             base_feature=RollingSumBaseFeature(params, windows=[("daily", 1)]),
             benchmarks=[ZeroBenchmark(params)],

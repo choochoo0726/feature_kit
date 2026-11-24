@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import polars as pl
 
-from kpi_metrics.params import Comparison, Param
+from feature_kit.params import Comparison, Param
 
 
 def _shared_and_feature_cols(

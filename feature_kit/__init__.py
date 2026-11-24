@@ -1,12 +1,12 @@
-from kpi_metrics.params import Param
+from feature_kit.params import Param
 
-from kpi_metrics.base_features import (
+from feature_kit.base_features import (
     RollingSumBaseFeature,
     YOYGrowthBaseFeature,
     POPGrowthBaseFeature,
 )
 
-from kpi_metrics.benchmarks import (
+from feature_kit.benchmarks import (
     ZeroBenchmark,
     LaggedYOYGrowthBenchmark,
     LaggedPOPGrowthBenchmark,
@@ -16,7 +16,7 @@ from kpi_metrics.benchmarks import (
     CohortRollingSumBenchmark,
 )
 
-from kpi_metrics.comparisons import (
+from feature_kit.comparisons import (
     DifferenceComparison,
     SignComparison,
     RatioComparison,
@@ -25,14 +25,14 @@ from kpi_metrics.comparisons import (
     ResidualComparison,
 )
 
-from kpi_metrics.transformations import (
+from feature_kit.transformations import (
     ClipTransformation,
     WinsorizeTransformation,
     RampUpTransformation,
     RampDownTransformation,
 )
 
-from kpi_metrics.builder import KpiMetricsBuilder
+from feature_kit.builder import FeatureBuilder
 
 __all__ = [
     "Param",
@@ -56,5 +56,5 @@ __all__ = [
     "WinsorizeTransformation",
     "RampUpTransformation",
     "RampDownTransformation",
-    "KpiMetricsBuilder",
+    "FeatureBuilder",
 ]

@@ -3,7 +3,7 @@ from itertools import product as iproduct
 
 import polars as pl
 
-from kpi_metrics.params import BaseFeature, Param
+from feature_kit.params import BaseFeature, Param
 
 _DEFAULT_ROLLING_WINDOWS: list[tuple[str, int]] = [
     ("daily", 1),

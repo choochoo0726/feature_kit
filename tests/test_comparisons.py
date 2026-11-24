@@ -1,8 +1,8 @@
 import polars as pl
 import pytest
 from datetime import date
-from kpi_metrics.params import Param
-from kpi_metrics.comparisons import (
+from feature_kit.params import Param
+from feature_kit.comparisons import (
     DifferenceComparison,
     SignComparison,
     RatioComparison,

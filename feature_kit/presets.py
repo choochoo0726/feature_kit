@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-from kpi_metrics.base_features import YOYGrowthBaseFeature, RollingSumBaseFeature
-from kpi_metrics.benchmarks import ZeroBenchmark
-from kpi_metrics.builder import KpiMetricsBuilder
-from kpi_metrics.comparisons import DifferenceComparison, SignComparison
-from kpi_metrics.params import Param
+from feature_kit.base_features import YOYGrowthBaseFeature, RollingSumBaseFeature
+from feature_kit.benchmarks import ZeroBenchmark
+from feature_kit.builder import FeatureBuilder
+from feature_kit.comparisons import DifferenceComparison, SignComparison
+from feature_kit.params import Param
 
 
-def sales_yoy_vs_zero(params: Param) -> KpiMetricsBuilder:
+def sales_yoy_vs_zero(params: Param) -> FeatureBuilder:
     """YoY growth features compared against zero benchmark (difference + sign)."""
-    return KpiMetricsBuilder(
+    return FeatureBuilder(
         params=params,
         base_feature=YOYGrowthBaseFeature(params),
         benchmarks=[ZeroBenchmark(params)],
@@ -17,9 +17,9 @@ def sales_yoy_vs_zero(params: Param) -> KpiMetricsBuilder:
     )
 
 
-def sales_rolling_vs_zero(params: Param) -> KpiMetricsBuilder:
+def sales_rolling_vs_zero(params: Param) -> FeatureBuilder:
     """Rolling sum features compared against zero benchmark (difference + sign)."""
-    return KpiMetricsBuilder(
+    return FeatureBuilder(
         params=params,
         base_feature=RollingSumBaseFeature(params),
         benchmarks=[ZeroBenchmark(params)],

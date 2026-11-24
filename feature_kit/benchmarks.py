@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import polars as pl
 
-from kpi_metrics.params import Benchmark, Param
+from feature_kit.params import Benchmark, Param
 
 _DEFAULT_PERIODS: list[tuple[str, int]] = [("week", 7), ("month", 28), ("quarter", 91)]
 

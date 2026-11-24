@@ -1,8 +1,8 @@
 import polars as pl
 import pytest
 from datetime import date
-from kpi_metrics.params import Param
-from kpi_metrics.base_features import RollingSumBaseFeature
+from feature_kit.params import Param
+from feature_kit.base_features import RollingSumBaseFeature
 
 
 @pytest.fixture
@@ -58,7 +58,7 @@ class TestRollingSumBaseFeature:
             assert f"SALES__ROLLING_SUM__{name}" in result.columns
 
 
-from kpi_metrics.base_features import YOYGrowthBaseFeature
+from feature_kit.base_features import YOYGrowthBaseFeature
 
 
 class TestYOYGrowthBaseFeature:
@@ -107,7 +107,7 @@ class TestYOYGrowthBaseFeature:
         assert b_vals[-1] == pytest.approx(2.0)
 
 
-from kpi_metrics.base_features import POPGrowthBaseFeature
+from feature_kit.base_features import POPGrowthBaseFeature
 
 
 class TestPOPGrowthBaseFeature:

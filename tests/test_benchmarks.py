@@ -1,9 +1,9 @@
 import polars as pl
 import pytest
 from datetime import date
-from kpi_metrics.params import Param
-from kpi_metrics.base_features import YOYGrowthBaseFeature, POPGrowthBaseFeature
-from kpi_metrics.benchmarks import ZeroBenchmark, LaggedYOYGrowthBenchmark, LaggedPOPGrowthBenchmark
+from feature_kit.params import Param
+from feature_kit.base_features import YOYGrowthBaseFeature, POPGrowthBaseFeature
+from feature_kit.benchmarks import ZeroBenchmark, LaggedYOYGrowthBenchmark, LaggedPOPGrowthBenchmark
 
 
 @pytest.fixture
@@ -98,8 +98,8 @@ class TestLaggedPOPGrowthBenchmark:
         for name in ["WEEK", "MONTH", "QUARTER"]:
             assert f"SALES__POP_GROWTH__DAILY__LAG1{name}" in result.columns
 
-from kpi_metrics.base_features import RollingSumBaseFeature
-from kpi_metrics.benchmarks import (
+from feature_kit.base_features import RollingSumBaseFeature
+from feature_kit.benchmarks import (
     LaggedRollingSumBenchmark,
     LaggedYOYProjectedRollingSumBenchmark,
     IBESConsensusSalesGrowthBenchmark,
