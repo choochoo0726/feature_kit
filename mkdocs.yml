@@ -1,6 +1,6 @@
 site_name: feature_kit
 site_description: Composable Polars pipelines that turn daily time series into forecast features and alpha signals.
-repo_url: https://github.com/choochoo0726/kpi_metrics
+repo_url: https://github.com/choochoo0726/feature_kit
 repo_name: feature_kit
 edit_uri: ""
 

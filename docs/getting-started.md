@@ -5,15 +5,15 @@
 feature_kit needs Python ≥ 3.10, Polars ≥ 0.20 and NumPy ≥ 1.26.
 
 ```bash
-git clone git@github.com:choochoo0726/kpi_metrics.git
-cd kpi_metrics
+git clone git@github.com:choochoo0726/feature_kit.git
+cd feature_kit
 uv sync
 ```
 
 To install it into another uv project from a local checkout:
 
 ```bash
-uv add --editable ../kpi_metrics
+uv add --editable ../feature_kit
 ```
 
 The import name is `feature_kit`, and the distribution name in `pyproject.toml` is `feature-kit`.
