@@ -8,7 +8,21 @@ _DEFAULT_PERIODS: list[tuple[str, int]] = [("week", 7), ("month", 28), ("quarter
 
 
 class ZeroBenchmark(Benchmark):
-    """Constant 0.0 benchmark aligned to base_df."""
+    """Constant ``0.0`` benchmark aligned to ``base_df``.
+
+    Answers "is the feature positive?". Works with any base feature. Because
+    the column has no metric prefix, comparisons pair it with every feature
+    column.
+
+    Parameters
+    ----------
+    params : Param
+        Shared column configuration.
+
+    Notes
+    -----
+    Output column: ``ZERO_BENCHMARK``.
+    """
 
     def __init__(self, params: Param) -> None:
         self.params = params
@@ -29,9 +43,28 @@ class ZeroBenchmark(Benchmark):
 class LaggedYOYGrowthBenchmark(Benchmark):
     """YoY growth feature values lagged by N multiples of named periods.
 
-    Each entry in *periods* is a ``(name, days)`` pair.  For every period the
-    benchmark is computed for lags 1 × days, 2 × days, …, num_lags × days,
-    producing columns named ``{feature}__LAG{n}{NAME}``.
+    Answers "has YoY growth accelerated since a week / month / quarter ago?".
+    For each ``(name, days)`` period and each ``n`` in ``1..num_lags``, the
+    benchmark at date ``t`` is the feature's value at calendar date
+    ``t - n * days`` (null if that date is missing).
+
+    Requires a base feature with ``__YOY_GROWTH__`` columns
+    (``YOYGrowthBaseFeature``); other columns are ignored.
+
+    Parameters
+    ----------
+    params : Param
+        Shared column configuration.
+    periods : list[tuple[str, int]], optional
+        ``(name, days)`` pairs. Defaults to
+        ``[("week", 7), ("month", 28), ("quarter", 91)]``.
+    num_lags : int, default 1
+        Number of multiples of each period to produce.
+
+    Notes
+    -----
+    Output columns: ``{feature}__LAG{n}{NAME}``, e.g.
+    ``SALES__YOY_GROWTH__QUADWEEKLY__LAG1WEEK``.
     """
 
     def __init__(
@@ -79,9 +112,24 @@ class LaggedYOYGrowthBenchmark(Benchmark):
 class LaggedPOPGrowthBenchmark(Benchmark):
     """PoP growth feature values lagged by N multiples of named periods.
 
-    Each entry in *periods* is a ``(name, days)`` pair.  For every period the
-    benchmark is computed for lags 1 × days, 2 × days, …, num_lags × days,
-    producing columns named ``{feature}__LAG{n}{NAME}``.
+    Same mechanics as ``LaggedYOYGrowthBenchmark`` but for
+    ``__POP_GROWTH__`` columns (``POPGrowthBaseFeature``): the benchmark at
+    date ``t`` is the feature's value at calendar date ``t - n * days``.
+
+    Parameters
+    ----------
+    params : Param
+        Shared column configuration.
+    periods : list[tuple[str, int]], optional
+        ``(name, days)`` pairs. Defaults to
+        ``[("week", 7), ("month", 28), ("quarter", 91)]``.
+    num_lags : int, default 1
+        Number of multiples of each period to produce.
+
+    Notes
+    -----
+    Output columns: ``{feature}__LAG{n}{NAME}``, e.g.
+    ``SALES__POP_GROWTH__QUADWEEKLY__LAG2MONTH``.
     """
 
     def __init__(
@@ -129,9 +177,25 @@ class LaggedPOPGrowthBenchmark(Benchmark):
 class LaggedRollingSumBenchmark(Benchmark):
     """Rolling sum values lagged by N multiples of named periods.
 
-    Each entry in *periods* is a ``(name, days)`` pair.  For every period the
-    benchmark is computed for lags 1 × days, 2 × days, …, num_lags × days,
-    producing columns named ``{feature}__LAG{n}{NAME}``.
+    For ``__ROLLING_SUM__`` columns (``RollingSumBaseFeature``): the
+    benchmark at date ``t`` is the rolling sum at calendar date
+    ``t - n * days``. Pair with ``RatioComparison`` to get a growth rate
+    versus that earlier period.
+
+    Parameters
+    ----------
+    params : Param
+        Shared column configuration.
+    periods : list[tuple[str, int]], optional
+        ``(name, days)`` pairs. Defaults to
+        ``[("week", 7), ("month", 28), ("quarter", 91)]``.
+    num_lags : int, default 1
+        Number of multiples of each period to produce.
+
+    Notes
+    -----
+    Output columns: ``{feature}__LAG{n}{NAME}``, e.g.
+    ``SALES__ROLLING_SUM__WEEKLY__LAG1MONTH``.
     """
 
     def __init__(
@@ -169,11 +233,38 @@ class LaggedRollingSumBenchmark(Benchmark):
 
 
 class LaggedYOYProjectedRollingSumBenchmark(Benchmark):
-    """Projected rolling sum: Sum_{yoy_days ago} * Sum_{lag ago} / Sum_{(yoy_days+lag) ago}.
+    """Seasonally projected rolling sum.
 
-    Each entry in *periods* is a ``(name, days)`` pair.  For every period the
-    projection is computed for lags 1 × days, 2 × days, …, num_lags × days,
-    producing columns named ``{feature}__LAG{n}{NAME}_YOY_PROJECTED``.
+    Projects today's rolling sum by applying the YoY growth observed ``L``
+    days ago to last year's value:
+
+    $$
+    \\hat S_t = S_{t-Y} \\cdot \\frac{S_{t-L}}{S_{t-Y-L}}
+    $$
+
+    where ``Y = yoy_days`` and ``L = n * days`` for each period and each
+    ``n`` in ``1..num_lags``. All three terms are matched by exact calendar
+    date; any missing term gives null. Answers "is the current period
+    running ahead of what the recent YoY trend implies?".
+
+    Requires ``__ROLLING_SUM__`` columns (``RollingSumBaseFeature``).
+
+    Parameters
+    ----------
+    params : Param
+        Shared column configuration.
+    periods : list[tuple[str, int]], optional
+        ``(name, days)`` pairs. Defaults to
+        ``[("week", 7), ("month", 28), ("quarter", 91)]``.
+    num_lags : int, default 1
+        Number of multiples of each period to produce.
+    yoy_days : int, default 364
+        Calendar-day offset of the prior year.
+
+    Notes
+    -----
+    Output columns: ``{feature}__LAG{n}{NAME}_YOY_PROJECTED``, e.g.
+    ``SALES__ROLLING_SUM__WEEKLY__LAG1MONTH_YOY_PROJECTED``.
     """
 
     def __init__(
@@ -238,7 +329,39 @@ class LaggedYOYProjectedRollingSumBenchmark(Benchmark):
 
 
 class IBESConsensusSalesGrowthBenchmark(Benchmark):
-    """External IBES consensus sales growth joined via join_asof on DATADATE per entity."""
+    """External IBES consensus sales growth, as-of joined per entity.
+
+    For each ``(keys, date)`` row in ``base_df``, takes the most recent IBES
+    row for the same entity dated **on or before** that date (backward
+    ``join_asof``), so no future consensus leaks in.
+
+    Parameters
+    ----------
+    params : Param
+        Shared column configuration.
+    freq : {"quarterly", "semiannual"}, default "quarterly"
+        Which consensus column to read.
+
+    Raises
+    ------
+    ValueError
+        If ``freq`` is invalid, or if ``external_dfs["ibes"]`` is not
+        provided to ``compute``.
+
+    Notes
+    -----
+    ``external_dfs["ibes"]`` must contain ``params.keys``,
+    ``params.date_col`` and the column for ``freq``:
+
+    | freq | Column (input and output) |
+    |------|---------------------------|
+    | ``"quarterly"`` | ``IBES_QUARTERLY_SALES_GROWTH_BENCHMARK`` |
+    | ``"semiannual"`` | ``IBES_SEMIANNUAL_SALES_GROWTH_BENCHMARK`` |
+
+    The column has no metric prefix, so comparisons pair it with every
+    feature column. Use it with ``YOYGrowthBaseFeature`` so like is compared
+    with like.
+    """
 
     COLUMN_MAP = {
         "quarterly": "IBES_QUARTERLY_SALES_GROWTH_BENCHMARK",
@@ -275,7 +398,32 @@ class IBESConsensusSalesGrowthBenchmark(Benchmark):
 
 
 class CohortRollingSumBenchmark(Benchmark):
-    """Mean or median of rolling sum values within a cohort group per date."""
+    """Cross-sectional mean or median of rolling sums within a cohort, per date.
+
+    Answers "is this entity doing better than its peers today?". For each
+    date, groups entities by ``cohort_cols`` (read from ``raw_df``) and
+    aggregates each ``__ROLLING_SUM__`` column. The entity itself is
+    included in its own cohort's aggregate.
+
+    Parameters
+    ----------
+    params : Param
+        Shared column configuration.
+    cohort_cols : list[str]
+        Columns in ``raw_df`` defining the peer group, e.g. ``["SECTOR"]``.
+    agg : {"mean", "median"}, default "mean"
+        Aggregation across the cohort.
+
+    Raises
+    ------
+    ValueError
+        If ``agg`` is not ``"mean"`` or ``"median"``.
+
+    Notes
+    -----
+    Output columns: ``{feature}__COHORT_BENCHMARK``, e.g.
+    ``SALES__ROLLING_SUM__WEEKLY__COHORT_BENCHMARK``.
+    """
 
     def __init__(self, params: Param, cohort_cols: list[str], agg: str = "mean") -> None:
         if agg not in ("mean", "median"):

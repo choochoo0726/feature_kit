@@ -42,7 +42,20 @@ def _pair_cols(
 
 
 class DifferenceComparison(Comparison):
-    """base - benchmark for each same-metric (base_col, bench_col) pair."""
+    """Difference ``base - benchmark`` for each matching column pair.
+
+    Parameters
+    ----------
+    params : Param, optional
+        Used only for same-metric pairing. If given, a metric-prefixed
+        benchmark column (``SALES__...``) is paired only with features of the
+        same metric. If omitted, **every** feature is paired with **every**
+        benchmark column, including cross-metric pairs.
+
+    Notes
+    -----
+    Output columns: ``{base_col}__VS__{bench_col}__DIFFERENCE``.
+    """
 
     def __init__(self, params: Param | None = None) -> None:
         self.params = params
@@ -60,7 +73,17 @@ class DifferenceComparison(Comparison):
 
 
 class SignComparison(Comparison):
-    """sign(base - benchmark) for each same-metric (base_col, bench_col) pair."""
+    """Sign of ``base - benchmark``: ``-1.0``, ``0.0`` or ``1.0`` (Float64).
+
+    Parameters
+    ----------
+    params : Param, optional
+        Used only for same-metric pairing; see ``DifferenceComparison``.
+
+    Notes
+    -----
+    Output columns: ``{base_col}__VS__{bench_col}__SIGN``.
+    """
 
     def __init__(self, params: Param | None = None) -> None:
         self.params = params
@@ -78,7 +101,21 @@ class SignComparison(Comparison):
 
 
 class RatioComparison(Comparison):
-    """(base - benchmark) / benchmark for each same-metric (base_col, bench_col) pair."""
+    """Relative difference ``(base - benchmark) / benchmark``.
+
+    Divides by the signed benchmark, not its absolute value, so the sign
+    flips when the benchmark is negative. A zero benchmark gives
+    ``inf``/``NaN``, so don't use it with ``ZeroBenchmark``.
+
+    Parameters
+    ----------
+    params : Param, optional
+        Used only for same-metric pairing; see ``DifferenceComparison``.
+
+    Notes
+    -----
+    Output columns: ``{base_col}__VS__{bench_col}__RATIO``.
+    """
 
     def __init__(self, params: Param | None = None) -> None:
         self.params = params
@@ -96,7 +133,29 @@ class RatioComparison(Comparison):
 
 
 class ZScoreComparison(Comparison):
-    """Rolling z-score of (base - benchmark), grouped by params.keys."""
+    """Rolling time-series z-score of ``d = base - benchmark``, per entity.
+
+    $$
+    z_t = \\frac{d_t - \\operatorname{mean}(d_{t-W+1..t})}
+               {\\operatorname{std}(d_{t-W+1..t})}
+    $$
+
+    The window is the last ``W`` rows of the entity **including** row
+    ``t``. The first ``W - 1`` rows, and any window containing a null, give
+    null.
+
+    Parameters
+    ----------
+    params : Param
+        Shared column configuration (required: provides ``keys`` for
+        grouping and ``metrics`` for pairing).
+    lookback_window : int
+        ``W``, the number of rows in the rolling window.
+
+    Notes
+    -----
+    Output columns: ``{base_col}__VS__{bench_col}__ZSCORE``.
+    """
 
     def __init__(self, params: Param, lookback_window: int) -> None:
         self.params = params
@@ -128,7 +187,33 @@ class ZScoreComparison(Comparison):
 
 
 class RankComparison(Comparison):
-    """Cross-sectional [-1, 1] percentile rank of (base - benchmark), grouped by params.keys."""
+    """Rolling time-series percentile rank of ``d = base - benchmark``, per entity.
+
+    Ranks today's ``d_t`` among the entity's own last ``W`` values
+    (including today) and rescales it:
+
+    $$
+    r_t = 2 \\cdot \\frac{\\operatorname{rank}(d_t)}{W} - 1
+    $$
+
+    Ties use the average rank. The result lies in ``[2/W - 1, 1]``: ``1``
+    means today is the highest value in the window. This is a time-series
+    rank within each entity, **not** a cross-sectional rank across
+    entities. The first ``W - 1`` rows give null.
+
+    Parameters
+    ----------
+    params : Param
+        Shared column configuration (required).
+    lookback_window : int
+        ``W``, the number of rows in the rolling window.
+
+    Notes
+    -----
+    Output columns: ``{base_col}__VS__{bench_col}__RANK``. Uses
+    ``rolling_map`` with a Python callback, so it is much slower than the
+    other comparisons on large panels.
+    """
 
     def __init__(self, params: Param, lookback_window: int) -> None:
         self.params = params
@@ -164,7 +249,37 @@ class RankComparison(Comparison):
 
 
 class ResidualComparison(Comparison):
-    """OLS residual of (base ~ benchmark + const) over a rolling window, grouped by params.keys."""
+    """Rolling OLS residual of ``base ~ benchmark + const``, per entity.
+
+    For each row ``t``, fits ``y = beta * x + alpha`` by least squares on
+    the entity's last ``W`` rows (including ``t``) and returns
+
+    $$
+    e_t = y_t - (\\hat\\beta\\, x_t + \\hat\\alpha)
+    $$
+
+    where ``y`` is the base feature and ``x`` the benchmark. This is the
+    part of the feature not explained by its recent linear relationship to
+    the benchmark. Windows containing a null, and the first ``W - 1`` rows,
+    give null.
+
+    Parameters
+    ----------
+    params : Param
+        Shared column configuration (required).
+    lookback_window : int
+        ``W``, the number of rows in the regression window.
+
+    Notes
+    -----
+    Output columns: ``{base_col}__VS__{bench_col}__RESIDUAL``. Implemented
+    as a Python/NumPy loop over entities and rows, so cost is roughly
+    ``O(rows x W x pairs)``. It is the slowest component; pair it with
+    a short list of features.
+
+    A constant benchmark (e.g. ``ZeroBenchmark``) makes the regression
+    degenerate: the residual reduces to ``y_t`` minus its window mean.
+    """
 
     def __init__(self, params: Param, lookback_window: int) -> None:
         self.params = params

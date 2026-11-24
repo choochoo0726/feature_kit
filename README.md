@@ -16,6 +16,14 @@ raw_df
 
 Each component is independently callable via `.compute()`, or they can be orchestrated together through `FeatureBuilder`.
 
+## Documentation
+
+The full docs (user guide, recipes, known limitations and API reference) live in `docs/` and build with MkDocs Material:
+
+```bash
+uv run --group docs mkdocs serve   # live preview at http://127.0.0.1:8000
+```
+
 ## Installation
 
 ```bash

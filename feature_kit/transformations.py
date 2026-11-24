@@ -10,7 +10,20 @@ def _feature_cols(df: pl.DataFrame, non_feature: set[str]) -> list[str]:
 
 
 class ClipTransformation(Transformation):
-    """Clip all feature columns to [lower, upper]."""
+    """Clip every feature column to the fixed range ``[lower, upper]``.
+
+    Parameters
+    ----------
+    lower : float
+        Lower bound.
+    upper : float
+        Upper bound.
+
+    Notes
+    -----
+    Every column except ``specid`` and ``DATADATE`` is treated as a feature
+    (these names are hardcoded; see *Known limitations* in the docs).
+    """
 
     def __init__(self, lower: float, upper: float) -> None:
         self.lower = lower
@@ -22,7 +35,25 @@ class ClipTransformation(Transformation):
 
 
 class WinsorizeTransformation(Transformation):
-    """Clip feature columns to [lower_q, upper_q] quantiles computed across all rows."""
+    """Clip each feature column to its ``[lower_q, upper_q]`` quantiles.
+
+    Quantiles are computed once over **all rows of the input**, pooled
+    across every entity and every date. In a backtest this uses future
+    data: a value in 2022 is clipped with bounds that depend on 2024 data.
+    For point-in-time signals, winsorize per date or on an expanding window
+    downstream instead.
+
+    Parameters
+    ----------
+    lower_q : float, default 0.01
+        Lower quantile (linear interpolation).
+    upper_q : float, default 0.99
+        Upper quantile (linear interpolation).
+
+    Notes
+    -----
+    Every column except ``specid`` and ``DATADATE`` is treated as a feature.
+    """
 
     def __init__(self, lower_q: float = 0.01, upper_q: float = 0.99) -> None:
         self.lower_q = lower_q
@@ -39,7 +70,34 @@ class WinsorizeTransformation(Transformation):
 
 
 class RampUpTransformation(Transformation):
-    """Scale feature columns 0→1 based on entity age: (age - min_age) / (max_age - min_age), clipped [0,1]."""
+    """Fade features in as an entity ages: multiply by a 0→1 ramp.
+
+    $$
+    s = \\operatorname{clip}\\left(\\frac{\\text{age} - \\text{min\\_age}}
+        {\\text{max\\_age} - \\text{min\\_age}},\\ 0,\\ 1\\right),
+    \\qquad f' = f \\cdot s
+    $$
+
+    Use it to down-weight signals from newly covered entities whose data is
+    still noisy.
+
+    Parameters
+    ----------
+    age_col : str
+        Column in the input holding entity age (e.g. days since coverage
+        start). It is left unscaled.
+    min_age : int
+        Age at or below which features are zeroed.
+    max_age : int
+        Age at or above which features are kept at full weight.
+
+    Notes
+    -----
+    ``age_col`` must be present in the DataFrame passed to ``compute``.
+    ``FeatureBuilder`` output keeps only keys, date and comparison columns,
+    so call this transformation on its own after joining the age column,
+    not inside the builder's ``transformations`` list.
+    """
 
     def __init__(self, age_col: str, min_age: int, max_age: int) -> None:
         self.age_col = age_col
@@ -56,7 +114,31 @@ class RampUpTransformation(Transformation):
 
 
 class RampDownTransformation(Transformation):
-    """Scale feature columns 1→0 based on entity age: 1 - (age - min_age) / (max_age - min_age), clipped [0,1]."""
+    """Fade features out as an entity ages: multiply by a 1→0 ramp.
+
+    $$
+    s = \\operatorname{clip}\\left(1 - \\frac{\\text{age} - \\text{min\\_age}}
+        {\\text{max\\_age} - \\text{min\\_age}},\\ 0,\\ 1\\right),
+    \\qquad f' = f \\cdot s
+    $$
+
+    The mirror of ``RampUpTransformation``, e.g. for signals that only
+    matter shortly after an event.
+
+    Parameters
+    ----------
+    age_col : str
+        Column in the input holding entity age. It is left unscaled.
+    min_age : int
+        Age at or below which features are kept at full weight.
+    max_age : int
+        Age at or above which features are zeroed.
+
+    Notes
+    -----
+    Same ``age_col`` requirement as ``RampUpTransformation``: apply it on
+    its own, not inside ``FeatureBuilder``.
+    """
 
     def __init__(self, age_col: str, min_age: int, max_age: int) -> None:
         self.age_col = age_col
