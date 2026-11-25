@@ -3,7 +3,7 @@ from itertools import product as iproduct
 
 import polars as pl
 
-from feature_kit.params import BaseFeature, Param
+from feature_kit.params import BaseFeature, Param, _safe_div
 
 _DEFAULT_ROLLING_WINDOWS: list[tuple[str, int]] = [
     ("daily", 1),
@@ -142,7 +142,7 @@ class YOYGrowthBaseFeature(BaseFeature):
     ``RollingSumBaseFeature``, and the prior-year value is matched by **exact
     calendar date** (``date - yoy_days``). If either sum is null (missing
     date, too little history or coverage), the growth is null. A zero
-    prior-year sum gives ``inf``/``NaN``.
+    prior-year sum also gives null.
 
     Parameters
     ----------
@@ -217,7 +217,7 @@ class YOYGrowthBaseFeature(BaseFeature):
             prior = f"{curr}__PRIOR"
             feat = f"{m}__YOY_GROWTH__{name.upper()}"
             feature_exprs.append(
-                ((pl.col(curr) - pl.col(prior)) / pl.col(prior).abs()).alias(feat)
+                _safe_div(pl.col(curr) - pl.col(prior), pl.col(prior).abs()).alias(feat)
             )
             feature_cols.append(feat)
 
@@ -238,7 +238,7 @@ class POPGrowthBaseFeature(BaseFeature):
     The lag equals the window size, so consecutive non-overlapping periods
     are compared (e.g. the last 28 days vs. the 28 days before). The prior
     value is matched by exact calendar date (``date - w`` days); a missing
-    prior date gives null. Both sums follow the calendar-day coverage rule
+    prior date, or a zero prior sum, gives null. Both sums follow the calendar-day coverage rule
     of ``RollingSumBaseFeature``.
 
     Parameters
@@ -304,7 +304,7 @@ class POPGrowthBaseFeature(BaseFeature):
                 prior = f"{curr}__PRIOR"
                 feat = f"{m}__POP_GROWTH__{name.upper()}"
                 feature_exprs.append(
-                    ((pl.col(curr) - pl.col(prior)) / pl.col(prior).abs()).alias(feat)
+                    _safe_div(pl.col(curr) - pl.col(prior), pl.col(prior).abs()).alias(feat)
                 )
                 feature_cols.append(feat)
 

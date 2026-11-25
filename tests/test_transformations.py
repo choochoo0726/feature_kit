@@ -154,3 +154,18 @@ class TestRampDownTransformation:
         assert vals[0] == pytest.approx(1.0)
         assert vals[1] == pytest.approx(0.5)
         assert vals[2] == pytest.approx(0.0)
+
+
+class TestInputValidation:
+    def test_ramp_requires_max_above_min(self):
+        with pytest.raises(ValueError, match="max_age must be greater"):
+            RampUpTransformation("age", min_age=10, max_age=10)
+        with pytest.raises(ValueError, match="max_age must be greater"):
+            RampDownTransformation("age", min_age=10, max_age=5)
+
+    def test_standalone_custom_keys_without_params_raises(self):
+        df = pl.DataFrame({"ticker": ["A"], "dt": [date(2023, 1, 1)], "FEAT": [5.0]})
+        with pytest.raises(ValueError, match="Pass params"):
+            ClipTransformation(-1.0, 1.0).compute(df)
+        with pytest.raises(ValueError, match="Pass params"):
+            WinsorizeTransformation().compute(df)

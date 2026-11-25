@@ -5,6 +5,11 @@ from dataclasses import dataclass
 import polars as pl
 
 
+def _safe_div(num: pl.Expr, den: pl.Expr) -> pl.Expr:
+    """num / den, or null where den is zero (instead of inf/NaN)."""
+    return pl.when(den != 0).then(num / den).otherwise(None)
+
+
 @dataclass
 class Param:
     """Shared configuration describing the layout of the input panel.

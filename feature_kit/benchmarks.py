@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import polars as pl
 
-from feature_kit.params import Benchmark, Param
+from feature_kit.params import Benchmark, Param, _safe_div
 
 _DEFAULT_PERIODS: list[tuple[str, int]] = [("week", 7), ("month", 28), ("quarter", 91)]
 
@@ -244,7 +244,7 @@ class LaggedYOYProjectedRollingSumBenchmark(Benchmark):
 
     where ``Y = yoy_days`` and ``L = n * days`` for each period and each
     ``n`` in ``1..num_lags``. All three terms are matched by exact calendar
-    date; any missing term gives null. Answers "is the current period
+    date; any missing term, or a zero denominator, gives null. Answers "is the current period
     running ahead of what the recent YoY trend implies?".
 
     Requires ``__ROLLING_SUM__`` columns (``RollingSumBaseFeature``).
@@ -315,7 +315,7 @@ class LaggedYOYProjectedRollingSumBenchmark(Benchmark):
                     .join(yoy_lag_df, on=[*keys, date_col], how="left")
                 )
                 proj_exprs = [
-                    (pl.col(f"{c}__YOY") * pl.col(f"{c}__{suffix}") / pl.col(f"{c}__YOY{suffix}"))
+                    _safe_div(pl.col(f"{c}__YOY") * pl.col(f"{c}__{suffix}"), pl.col(f"{c}__YOY{suffix}"))
                     .alias(f"{c}__{suffix}_YOY_PROJECTED")
                     for c in roll_cols
                 ]

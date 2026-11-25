@@ -304,3 +304,20 @@ class TestCohortLeaveOneOut:
 
     def test_default_includes_self(self, params):
         assert CohortRollingSumBenchmark(params, cohort_cols=["sector"]).exclude_self is False
+
+
+class TestProjectedZeroDenominator:
+    def test_zero_denominator_gives_null(self):
+        from feature_kit.benchmarks import LaggedYOYProjectedRollingSumBenchmark
+        params = Param(keys=["specid"], metrics=["SALES"])
+        # projection at t = S(t-4) * S(t-1) / S(t-5)   (yoy_days=4, lag=1)
+        base_df = pl.DataFrame({
+            "specid": ["A"] * 7,
+            "DATADATE": [date(2023, 1, i + 1) for i in range(7)],
+            "SALES__ROLLING_SUM__W": [0.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0],
+        })
+        bench = LaggedYOYProjectedRollingSumBenchmark(params, periods=[("d", 1)], yoy_days=4)
+        vals = bench.compute(base_df, base_df)["SALES__ROLLING_SUM__W__LAG1D_YOY_PROJECTED"].to_list()
+        assert vals[5] is None                              # S(1/1) = 0 -> null, not inf
+        assert vals[6] == pytest.approx(3.0 * 6.0 / 2.0)    # S(1/3) * S(1/6) / S(1/2)
+        assert vals[:5] == [None] * 5                       # not enough history

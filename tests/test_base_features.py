@@ -254,3 +254,30 @@ class TestCalendarWindowsAndCoverage:
         clean = date(2023, 1, 1) + timedelta(days=364 + 30)
         assert by_day[affected] is None
         assert by_day[clean] == pytest.approx(0.0)
+
+
+class TestZeroDenominator:
+    def test_yoy_zero_prior_sum_is_null(self, params):
+        # SALES is 0 for the first 8 days, then 1. Window w=2, yoy_days=364.
+        days = list(range(380))
+        df = pl.DataFrame({
+            "specid": ["A"] * len(days),
+            "DATADATE": [date(2023, 1, 1) + timedelta(days=d) for d in days],
+            "SALES": [0.0 if d < 8 else 1.0 for d in days],
+        })
+        result = YOYGrowthBaseFeature(params, windows=[("w", 2)]).compute(df)
+        vals = dict(zip(result["DATADATE"].to_list(), result["SALES__YOY_GROWTH__W"].to_list()))
+        day = lambda d: date(2023, 1, 1) + timedelta(days=d)
+        assert vals[day(369)] is None                      # current 2, prior (days 4-5) 0 -> null, not inf
+        assert vals[day(372)] == pytest.approx(1.0)        # current 2, prior (days 7-8) 1 -> 1.0
+
+    @pytest.mark.parametrize("values", [[0.0, 0.0, 1.0, 1.0], [0.0, 0.0, 0.0, 0.0]])
+    def test_pop_zero_prior_sum_is_null(self, params, values):
+        # x/0 and 0/0 both give null
+        df = pl.DataFrame({
+            "specid": ["A"] * 4,
+            "DATADATE": [date(2023, 1, i + 1) for i in range(4)],
+            "SALES": values,
+        })
+        result = POPGrowthBaseFeature(params, windows=[("w", 2)]).compute(df)
+        assert result["SALES__POP_GROWTH__W"].to_list()[-1] is None

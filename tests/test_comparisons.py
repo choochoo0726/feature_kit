@@ -241,3 +241,14 @@ class TestPairingWithoutParams:
             "SALES__YOY_GROWTH__Q__VS__ZERO_BENCHMARK__DIFFERENCE",
             "TXN__YOY_GROWTH__Q__VS__ZERO_BENCHMARK__DIFFERENCE",
         ]
+
+
+class TestRatioZeroBenchmark:
+    def test_zero_benchmark_gives_null(self):
+        base_df = pl.DataFrame({"specid": ["A", "A"], "DATADATE": [date(2023, 1, 1), date(2023, 1, 2)],
+                                "SALES__ROLLING_SUM__W": [5.0, 0.0]})
+        bench_df = pl.DataFrame({"specid": ["A", "A"], "DATADATE": [date(2023, 1, 1), date(2023, 1, 2)],
+                                 "SALES__ROLLING_SUM__W__LAG1WEEK": [0.0, 0.0]})
+        result = RatioComparison().compute(base_df, bench_df)
+        col = "SALES__ROLLING_SUM__W__VS__SALES__ROLLING_SUM__W__LAG1WEEK__RATIO"
+        assert result[col].to_list() == [None, None]

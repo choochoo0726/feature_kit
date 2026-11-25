@@ -14,10 +14,28 @@ def _feature_cols(
     params: Param | None,
     extra: list[str] | None = None,
 ) -> list[str]:
-    """All columns except keys, date and *extra* (e.g. an age column)."""
+    """All columns except keys, date and *extra* (e.g. an age column).
+
+    Without *params*, the default ``specid`` / ``DATADATE`` names are assumed;
+    if they are not in the frame, raise rather than treat the real key
+    columns as features.
+    """
+    if params is None:
+        missing = [c for c in (*_DEFAULT_PARAMS.keys, _DEFAULT_PARAMS.date_col) if c not in df.columns]
+        if missing:
+            raise ValueError(
+                f"columns {missing} not found; this transformation assumes the default "
+                "key/date columns 'specid'/'DATADATE'. Pass params=Param(keys=..., "
+                "metrics=..., date_col=...) to name yours."
+            )
     p = params or _DEFAULT_PARAMS
     non_feature = {*p.keys, p.date_col, *(extra or [])}
     return [c for c in df.columns if c not in non_feature]
+
+
+def _check_age_range(min_age: int, max_age: int) -> None:
+    if max_age <= min_age:
+        raise ValueError(f"max_age must be greater than min_age, got min_age={min_age}, max_age={max_age}")
 
 
 class ClipTransformation(Transformation):
@@ -147,6 +165,7 @@ class RampUpTransformation(Transformation):
     def __init__(
         self, age_col: str, min_age: int, max_age: int, params: Param | None = None
     ) -> None:
+        _check_age_range(min_age, max_age)
         self.age_col = age_col
         self.min_age = min_age
         self.max_age = max_age
@@ -197,6 +216,7 @@ class RampDownTransformation(Transformation):
     def __init__(
         self, age_col: str, min_age: int, max_age: int, params: Param | None = None
     ) -> None:
+        _check_age_range(min_age, max_age)
         self.age_col = age_col
         self.min_age = min_age
         self.max_age = max_age

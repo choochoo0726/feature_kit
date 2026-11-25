@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import polars as pl
 
-from feature_kit.params import Comparison, Param
+from feature_kit.params import Comparison, Param, _safe_div
 
 
 def _shared_and_feature_cols(
@@ -126,8 +126,8 @@ class RatioComparison(Comparison):
     """Relative difference ``(base - benchmark) / benchmark``.
 
     Divides by the signed benchmark, not its absolute value, so the sign
-    flips when the benchmark is negative. A zero benchmark gives
-    ``inf``/``NaN``, so don't use it with ``ZeroBenchmark``.
+    flips when the benchmark is negative. A zero benchmark gives null, so
+    the ratio is meaningless with ``ZeroBenchmark``.
 
     Parameters
     ----------
@@ -149,7 +149,7 @@ class RatioComparison(Comparison):
         exprs, result_cols = [], []
         for fc, bc in _pair_cols(feature_cols, bench_cols, metrics):
             name = f"{fc}__VS__{bc}__RATIO"
-            exprs.append(((pl.col(fc) - pl.col(bc)) / pl.col(bc)).alias(name))
+            exprs.append(_safe_div(pl.col(fc) - pl.col(bc), pl.col(bc)).alias(name))
             result_cols.append(name)
         return joined.with_columns(exprs).select([*shared, *result_cols])
 
