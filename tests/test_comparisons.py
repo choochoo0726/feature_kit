@@ -222,3 +222,22 @@ class TestResidualComparison:
         result = ResidualComparison(params, lookback_window=5).compute(base_df, bench_df)
         col = "SALES__YOY_GROWTH__DAILY__VS__ZERO_BENCHMARK__RESIDUAL"
         assert result[col][-1] is not None
+
+
+class TestPairingWithoutParams:
+    def test_metric_prefixed_benchmark_stays_within_metric(self):
+        """Without params, a SALES-prefixed (non-derived) benchmark must not pair with TXN features."""
+        base_df = pl.DataFrame({
+            "specid": ["A"], "DATADATE": [date(2023, 1, 1)],
+            "SALES__YOY_GROWTH__Q": [0.1], "TXN__YOY_GROWTH__Q": [0.2],
+        })
+        bench_df = pl.DataFrame({
+            "specid": ["A"], "DATADATE": [date(2023, 1, 1)],
+            "SALES__CUSTOM_BENCHMARK": [0.0], "ZERO_BENCHMARK": [0.0],
+        })
+        cols = [c for c in DifferenceComparison().compute(base_df, bench_df).columns if "__VS__" in c]
+        assert cols == [
+            "SALES__YOY_GROWTH__Q__VS__SALES__CUSTOM_BENCHMARK__DIFFERENCE",
+            "SALES__YOY_GROWTH__Q__VS__ZERO_BENCHMARK__DIFFERENCE",
+            "TXN__YOY_GROWTH__Q__VS__ZERO_BENCHMARK__DIFFERENCE",
+        ]

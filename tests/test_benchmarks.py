@@ -181,7 +181,7 @@ class TestIBESConsensusSalesGrowthBenchmark:
             "IBES_QUARTERLY_SALES_GROWTH_BENCHMARK": [0.05 * (i + 1) for i in range(10)],
         })
         result = IBESConsensusSalesGrowthBenchmark(params).compute(base_df, raw_df, external_dfs={"ibes": ibes_df})
-        assert "IBES_QUARTERLY_SALES_GROWTH_BENCHMARK" in result.columns
+        assert result.columns == ["specid", "DATADATE", "SALES__IBES_QUARTERLY_SALES_GROWTH_BENCHMARK"]
 
     def test_raises_without_external_dfs(self, params, yoy_base):
         base_df, raw_df = yoy_base
@@ -191,6 +191,46 @@ class TestIBESConsensusSalesGrowthBenchmark:
     def test_invalid_freq_raises(self, params):
         with pytest.raises(ValueError, match="freq must be"):
             IBESConsensusSalesGrowthBenchmark(params, freq="annual")
+
+    def test_metric_required_with_several_metrics(self):
+        params = Param(keys=["specid"], metrics=["SALES", "TXN"])
+        with pytest.raises(ValueError, match="needs metric"):
+            IBESConsensusSalesGrowthBenchmark(params)
+        with pytest.raises(ValueError, match="not in params.metrics"):
+            IBESConsensusSalesGrowthBenchmark(params, metric="REVENUE")
+        assert IBESConsensusSalesGrowthBenchmark(params, metric="TXN").metric == "TXN"
+
+    def test_backward_asof_order_and_no_warning(self, recwarn):
+        params = Param(keys=["specid"], metrics=["SALES"])
+        # base_df deliberately not sorted by entity
+        base_df = pl.DataFrame({
+            "specid": ["B", "A", "B", "A"],
+            "DATADATE": [date(2023, 1, 5), date(2023, 1, 5), date(2023, 1, 1), date(2023, 1, 2)],
+            "SALES__YOY_GROWTH__Q": [0.0] * 4,
+        })
+        ibes_df = pl.DataFrame({
+            "specid": ["A", "A", "B"],
+            "DATADATE": [date(2023, 1, 1), date(2023, 1, 4), date(2023, 1, 3)],
+            "IBES_QUARTERLY_SALES_GROWTH_BENCHMARK": [0.1, 0.2, 0.3],
+        })
+        result = IBESConsensusSalesGrowthBenchmark(params).compute(base_df, base_df, {"ibes": ibes_df})
+        assert result.select("specid", "DATADATE").equals(base_df.select("specid", "DATADATE"))
+        # B@1/5 -> 0.3 (1/3), A@1/5 -> 0.2 (1/4), B@1/1 -> none yet, A@1/2 -> 0.1 (1/1)
+        assert result["SALES__IBES_QUARTERLY_SALES_GROWTH_BENCHMARK"].to_list() == [0.3, 0.2, None, 0.1]
+        assert not [w for w in recwarn if "Sortedness" in str(w.message)]
+
+    def test_pairs_only_with_its_metric(self):
+        from feature_kit.comparisons import DifferenceComparison
+        base_df = pl.DataFrame({
+            "specid": ["A"], "DATADATE": [date(2023, 1, 1)],
+            "SALES__YOY_GROWTH__Q": [0.1], "TXN__YOY_GROWTH__Q": [0.2],
+        })
+        bench_df = pl.DataFrame({
+            "specid": ["A"], "DATADATE": [date(2023, 1, 1)],
+            "SALES__IBES_QUARTERLY_SALES_GROWTH_BENCHMARK": [0.05],
+        })
+        cols = [c for c in DifferenceComparison().compute(base_df, bench_df).columns if "__VS__" in c]
+        assert cols == ["SALES__YOY_GROWTH__Q__VS__SALES__IBES_QUARTERLY_SALES_GROWTH_BENCHMARK__DIFFERENCE"]
 
 
 class TestCohortRollingSumBenchmark:
@@ -203,3 +243,64 @@ class TestCohortRollingSumBenchmark:
     def test_invalid_agg_raises(self, params):
         with pytest.raises(ValueError, match="agg must be"):
             CohortRollingSumBenchmark(params, cohort_cols=["sector"], agg="sum")
+
+
+def _brute_force_cohort(df, value_col, cohort_col, agg, exclude_self):
+    """Reference implementation: loop over rows in plain Python."""
+    import statistics
+    rows = df.to_dicts()
+    out = []
+    for r in rows:
+        peers = [
+            q[value_col] for q in rows
+            if q[cohort_col] == r[cohort_col] and q["DATADATE"] == r["DATADATE"]
+            and q[value_col] is not None
+            and not (exclude_self and q["specid"] == r["specid"])
+        ]
+        if not peers:
+            out.append(None)
+        else:
+            out.append(statistics.fmean(peers) if agg == "mean" else statistics.median(peers))
+    return out
+
+
+class TestCohortLeaveOneOut:
+    @pytest.fixture
+    def cohort_data(self):
+        import random
+        rng = random.Random(7)
+        rows = []
+        for d in range(4):
+            for i in range(9):
+                v = None if rng.random() < 0.15 else float(rng.choice([1, 2, 2, 3, 5, 8, 8, 13]))  # ties + nulls
+                rows.append({
+                    "specid": f"E{i}",
+                    "DATADATE": date(2023, 1, d + 1),
+                    "SECTOR": ["x", "y", "z"][i % 3] if i < 8 else "solo",
+                    "SALES__ROLLING_SUM__W": v,
+                })
+        df = pl.DataFrame(rows)
+        return df, df.select("specid", "DATADATE", "SECTOR")
+
+    @pytest.mark.parametrize("agg", ["mean", "median"])
+    @pytest.mark.parametrize("exclude_self", [False, True])
+    def test_matches_brute_force(self, cohort_data, agg, exclude_self):
+        base_df, raw_df = cohort_data
+        params = Param(keys=["specid"], metrics=["SALES"])
+        bench = CohortRollingSumBenchmark(params, ["SECTOR"], agg=agg, exclude_self=exclude_self)
+        result = bench.compute(base_df.drop("SECTOR"), raw_df)
+        got = result["SALES__ROLLING_SUM__W__COHORT_BENCHMARK"].to_list()
+        want = _brute_force_cohort(base_df, "SALES__ROLLING_SUM__W", "SECTOR", agg, exclude_self)
+        assert len(got) == len(want)
+        for g, w in zip(got, want):
+            assert (g is None and w is None) or g == pytest.approx(w)
+
+    def test_cohort_of_one_is_null(self, cohort_data):
+        base_df, raw_df = cohort_data
+        params = Param(keys=["specid"], metrics=["SALES"])
+        result = CohortRollingSumBenchmark(params, ["SECTOR"], exclude_self=True).compute(base_df.drop("SECTOR"), raw_df)
+        solo = result.filter(pl.col("specid") == "E8")["SALES__ROLLING_SUM__W__COHORT_BENCHMARK"]
+        assert solo.null_count() == len(solo)
+
+    def test_default_includes_self(self, params):
+        assert CohortRollingSumBenchmark(params, cohort_cols=["sector"]).exclude_self is False

@@ -333,7 +333,8 @@ class IBESConsensusSalesGrowthBenchmark(Benchmark):
 
     For each ``(keys, date)`` row in ``base_df``, takes the most recent IBES
     row for the same entity dated **on or before** that date (backward
-    ``join_asof``), so no future consensus leaks in.
+    ``join_asof``), so no future consensus leaks in. Output rows are in the
+    same order as ``base_df``.
 
     Parameters
     ----------
@@ -341,26 +342,30 @@ class IBESConsensusSalesGrowthBenchmark(Benchmark):
         Shared column configuration.
     freq : {"quarterly", "semiannual"}, default "quarterly"
         Which consensus column to read.
+    metric : str, optional
+        The metric the consensus describes, e.g. ``"SALES"``. The output
+        column is prefixed with it, so comparisons pair it only with that
+        metric's features. Defaults to the only metric in
+        ``params.metrics``; required when there are several.
 
     Raises
     ------
     ValueError
-        If ``freq`` is invalid, or if ``external_dfs["ibes"]`` is not
-        provided to ``compute``.
+        If ``freq`` is invalid, ``metric`` is missing or not in
+        ``params.metrics``, or ``external_dfs["ibes"]`` is not provided to
+        ``compute``.
 
     Notes
     -----
     ``external_dfs["ibes"]`` must contain ``params.keys``,
-    ``params.date_col`` and the column for ``freq``:
+    ``params.date_col`` and the input column for ``freq``:
 
-    | freq | Column (input and output) |
-    |------|---------------------------|
-    | ``"quarterly"`` | ``IBES_QUARTERLY_SALES_GROWTH_BENCHMARK`` |
-    | ``"semiannual"`` | ``IBES_SEMIANNUAL_SALES_GROWTH_BENCHMARK`` |
+    | freq | Input column | Output column |
+    |------|--------------|---------------|
+    | ``"quarterly"`` | ``IBES_QUARTERLY_SALES_GROWTH_BENCHMARK`` | ``{metric}__IBES_QUARTERLY_SALES_GROWTH_BENCHMARK`` |
+    | ``"semiannual"`` | ``IBES_SEMIANNUAL_SALES_GROWTH_BENCHMARK`` | ``{metric}__IBES_SEMIANNUAL_SALES_GROWTH_BENCHMARK`` |
 
-    The column has no metric prefix, so comparisons pair it with every
-    feature column. Use it with ``YOYGrowthBaseFeature`` so like is compared
-    with like.
+    Use it with ``YOYGrowthBaseFeature`` so growth is compared with growth.
     """
 
     COLUMN_MAP = {
@@ -368,11 +373,21 @@ class IBESConsensusSalesGrowthBenchmark(Benchmark):
         "semiannual": "IBES_SEMIANNUAL_SALES_GROWTH_BENCHMARK",
     }
 
-    def __init__(self, params: Param, freq: str = "quarterly") -> None:
+    def __init__(self, params: Param, freq: str = "quarterly", metric: str | None = None) -> None:
         if freq not in self.COLUMN_MAP:
             raise ValueError(f"freq must be 'quarterly' or 'semiannual', got {freq!r}")
+        if metric is None:
+            if len(params.metrics) != 1:
+                raise ValueError(
+                    "IBESConsensusSalesGrowthBenchmark needs metric=... when params has "
+                    f"several metrics {params.metrics}"
+                )
+            metric = params.metrics[0]
+        elif metric not in params.metrics:
+            raise ValueError(f"metric {metric!r} is not in params.metrics {params.metrics}")
         self.params = params
         self.freq = freq
+        self.metric = metric
 
     def compute(
         self,
@@ -384,16 +399,22 @@ class IBESConsensusSalesGrowthBenchmark(Benchmark):
             raise ValueError("IBESConsensusSalesGrowthBenchmark requires external_dfs['ibes']")
         keys = self.params.keys
         date_col = self.params.date_col
-        bench_col = self.COLUMN_MAP[self.freq]
+        in_col = self.COLUMN_MAP[self.freq]
+        out_col = f"{self.metric}__{in_col}"
+        order = "__row_order__"
+        # join_asof needs both sides sorted by date within each entity; sorting by
+        # (keys, date) satisfies that, so the sortedness check can be skipped.
+        right = (
+            external_dfs["ibes"].select([*keys, date_col, in_col])
+            .sort([*keys, date_col])
+            .rename({in_col: out_col})
+        )
         return (
-            base_df.select([*keys, date_col]).sort(date_col)
-            .join_asof(
-                external_dfs["ibes"].select([*keys, date_col, bench_col]).sort(date_col),
-                on=date_col,
-                by=keys,
-                strategy="backward",
-            )
-            .select([*keys, date_col, bench_col])
+            base_df.select([*keys, date_col]).with_row_index(order)
+            .sort([*keys, date_col])
+            .join_asof(right, on=date_col, by=keys, strategy="backward", check_sortedness=False)
+            .sort(order)
+            .select([*keys, date_col, out_col])
         )
 
 
@@ -402,8 +423,9 @@ class CohortRollingSumBenchmark(Benchmark):
 
     Answers "is this entity doing better than its peers today?". For each
     date, groups entities by ``cohort_cols`` (read from ``raw_df``) and
-    aggregates each ``__ROLLING_SUM__`` column. The entity itself is
-    included in its own cohort's aggregate.
+    aggregates each ``__ROLLING_SUM__`` column. By default the entity itself
+    is included in its own cohort's aggregate; set ``exclude_self=True`` for
+    a leave-one-out benchmark (peers only).
 
     Parameters
     ----------
@@ -412,7 +434,10 @@ class CohortRollingSumBenchmark(Benchmark):
     cohort_cols : list[str]
         Columns in ``raw_df`` defining the peer group, e.g. ``["SECTOR"]``.
     agg : {"mean", "median"}, default "mean"
-        Aggregation across the cohort.
+        Aggregation across the cohort. Null values are ignored.
+    exclude_self : bool, default False
+        Leave the entity's own value out of its cohort's aggregate. A cohort
+        whose only non-null value is the entity's own gives null.
 
     Raises
     ------
@@ -425,12 +450,19 @@ class CohortRollingSumBenchmark(Benchmark):
     ``SALES__ROLLING_SUM__WEEKLY__COHORT_BENCHMARK``.
     """
 
-    def __init__(self, params: Param, cohort_cols: list[str], agg: str = "mean") -> None:
+    def __init__(
+        self,
+        params: Param,
+        cohort_cols: list[str],
+        agg: str = "mean",
+        exclude_self: bool = False,
+    ) -> None:
         if agg not in ("mean", "median"):
             raise ValueError(f"agg must be 'mean' or 'median', got {agg!r}")
         self.params = params
         self.cohort_cols = cohort_cols
         self.agg = agg
+        self.exclude_self = exclude_self
 
     def compute(
         self,
@@ -446,12 +478,58 @@ class CohortRollingSumBenchmark(Benchmark):
             on=[*keys, date_col],
             how="left",
         )
-        agg_fn = pl.mean if self.agg == "mean" else pl.median
-        cohort_agg = enriched.group_by([*self.cohort_cols, date_col]).agg(
-            [agg_fn(c).alias(f"{c}__COHORT_BENCHMARK") for c in roll_cols]
-        )
+        group = [*self.cohort_cols, date_col]
         bench_cols = [f"{c}__COHORT_BENCHMARK" for c in roll_cols]
-        return (
-            enriched.join(cohort_agg, on=[*self.cohort_cols, date_col], how="left")
-            .select([*keys, date_col, *bench_cols])
-        )
+
+        if not self.exclude_self:
+            agg_fn = pl.mean if self.agg == "mean" else pl.median
+            cohort_agg = enriched.group_by(group).agg(
+                [agg_fn(c).alias(f"{c}__COHORT_BENCHMARK") for c in roll_cols]
+            )
+            return (
+                enriched.join(cohort_agg, on=group, how="left")
+                .select([*keys, date_col, *bench_cols])
+            )
+
+        exprs = [
+            (_loo_mean(c, group) if self.agg == "mean" else _loo_median(c, group))
+            .alias(f"{c}__COHORT_BENCHMARK")
+            for c in roll_cols
+        ]
+        return enriched.with_columns(exprs).select([*keys, date_col, *bench_cols])
+
+
+def _loo_mean(col: str, group: list[str]) -> pl.Expr:
+    """Mean of the group's non-null values, leaving out this row's own value."""
+    x = pl.col(col)
+    total = x.sum().over(group)
+    n = x.count().over(group)  # non-null count
+    own_n = x.is_not_null().cast(pl.Int64)
+    rest_n = n - own_n
+    rest_sum = total - x.fill_null(0.0)
+    return pl.when(rest_n > 0).then(rest_sum / rest_n).otherwise(None)
+
+
+def _loo_median(col: str, group: list[str]) -> pl.Expr:
+    """Median of the group's non-null values, leaving out this row's own value.
+
+    Uses the group's sorted values ``s`` and this row's position ``p`` in that
+    order (ordinal rank, so ties get distinct positions). Removing index ``p``
+    gives ``r[k] = s[k]`` for ``k < p`` and ``s[k + 1]`` otherwise; the median
+    of ``r`` (length ``m``) is the mean of ``r[(m - 1) // 2]`` and ``r[m // 2]``.
+    A row with a null value is not in ``s``, so it gets the full-group median.
+    """
+    x = pl.col(col)
+    s = x.drop_nulls().sort().implode().over(group)
+    p = (x.rank("ordinal").over(group) - 1).cast(pl.Int64)
+    m = x.count().over(group).cast(pl.Int64) - 1
+
+    def r(k: pl.Expr) -> pl.Expr:
+        return s.list.get(pl.when(k < p).then(k).otherwise(k + 1), null_on_oob=True)
+
+    loo = (r((m - 1) // 2) + r(m // 2)) / 2
+    return (
+        pl.when(x.is_null()).then(s.list.median())
+        .when(m > 0).then(loo)
+        .otherwise(None)
+    )
