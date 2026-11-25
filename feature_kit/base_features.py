@@ -23,25 +23,47 @@ _DEFAULT_POP_WINDOWS: list[tuple[str, int]] = [
 ]
 
 
+_DEFAULT_MIN_COVERAGE = 0.8
+
+
+def _check_min_coverage(min_coverage: float) -> float:
+    if not 0.0 < min_coverage <= 1.0:
+        raise ValueError(f"min_coverage must be in (0, 1], got {min_coverage!r}")
+    return min_coverage
+
+
 def _rolling_sum(
     df: pl.DataFrame,
     metrics: list[str],
     keys: list[str],
+    date_col: str,
     windows: list[tuple[str, int]],
+    min_coverage: float,
 ) -> pl.DataFrame:
-    """Compute group-wise rolling sums. Assumes df is sorted by (keys, date_col).
+    """Compute group-wise calendar-day rolling sums. Assumes df is sorted by (keys, date_col).
 
-    Window size is row-count-based, not calendar-day-based. For daily data with
-    no gaps, these are equivalent. Callers are responsible for ensuring the input
-    has no missing dates if calendar-day semantics are required.
+    For each window of ``w`` days ending on (and including) the row's date:
+
+    - the sum covers exactly ``w`` calendar days, so missing days contribute 0;
+    - the value is null unless the entity has at least ``w`` days of history
+      (``date - first_date >= w - 1``) **and** at least ``min_coverage`` of the
+      ``w`` days have a non-null value (rows that are absent or hold a null
+      both count as missing).
     """
-    exprs = [
-        pl.col(metric)
-        .rolling_sum(window_size=days, min_samples=1)
-        .over(keys)
-        .alias(f"{metric}__ROLLING_SUM__{name.upper()}")
-        for metric, (name, days) in iproduct(metrics, windows)
-    ]
+    age = (pl.col(date_col) - pl.col(date_col).min().over(keys)).dt.total_days()
+    exprs = []
+    for metric, (name, days) in iproduct(metrics, windows):
+        window = f"{days}d"
+        total = pl.col(metric).rolling_sum_by(date_col, window).over(keys)
+        n_obs = (
+            pl.col(metric).is_not_null().cast(pl.Int32)
+            .rolling_sum_by(date_col, window).over(keys)
+        )
+        valid = (age >= days - 1) & (n_obs >= min_coverage * days)
+        exprs.append(
+            pl.when(valid).then(total).otherwise(None)
+            .alias(f"{metric}__ROLLING_SUM__{name.upper()}")
+        )
     return df.with_columns(exprs)
 
 
@@ -52,18 +74,23 @@ class RollingSumBaseFeature(BaseFeature):
     S^{(w)}_t = \\sum_{i=0}^{w-1} x_{t-i}
     $$
 
-    The window counts **rows**, not calendar days, and uses
-    ``min_samples=1``: the first ``w - 1`` rows of each entity hold partial
-    sums rather than nulls.
+    The window covers exactly ``w`` **calendar days** ending on the row's
+    date; days with no row (or a null value) contribute 0. The value is null
+    when the entity has fewer than ``w`` days of history, or when fewer than
+    ``min_coverage`` of the ``w`` days have data.
 
     Parameters
     ----------
     params : Param
         Shared column configuration.
     windows : list[tuple[str, int]], optional
-        ``(name, size)`` pairs. ``name`` is upper-cased into the column name.
+        ``(name, days)`` pairs. ``name`` is upper-cased into the column name.
         Defaults to ``[("daily", 1), ("weekly", 7), ("quadweekly", 28),
         ("quarterly", 91)]``.
+    min_coverage : float, default 0.8
+        Minimum share of the window's days that must have data, in
+        ``(0, 1]``. ``0.8`` allows up to 20% missing days; ``1.0`` requires
+        every day.
 
     Notes
     -----
@@ -81,9 +108,11 @@ class RollingSumBaseFeature(BaseFeature):
         self,
         params: Param,
         windows: list[tuple[str, int]] | None = None,
+        min_coverage: float = _DEFAULT_MIN_COVERAGE,
     ) -> None:
         self.params = params
         self.windows = windows if windows is not None else _DEFAULT_ROLLING_WINDOWS
+        self.min_coverage = _check_min_coverage(min_coverage)
 
     def compute(self, df: pl.DataFrame) -> pl.DataFrame:
         feature_cols = [
@@ -94,7 +123,9 @@ class RollingSumBaseFeature(BaseFeature):
             df.sort([*self.params.keys, self.params.date_col]),
             metrics=self.params.metrics,
             keys=self.params.keys,
+            date_col=self.params.date_col,
             windows=self.windows,
+            min_coverage=self.min_coverage,
         )
         return result.select([*self.params.keys, self.params.date_col, *feature_cols])
 
@@ -107,21 +138,25 @@ class YOYGrowthBaseFeature(BaseFeature):
                {\\left|S^{(w)}_{t - \\text{yoy\\_days}}\\right|}
     $$
 
-    The rolling sum ``S`` is row-based (see ``RollingSumBaseFeature``), but
-    the prior-year value is matched by **exact calendar date**
-    (``date - yoy_days``). If that date is missing for the entity, the growth
-    is null. A zero prior-year sum gives ``inf``/``NaN``.
+    ``S`` is the calendar-day rolling sum with the coverage rule of
+    ``RollingSumBaseFeature``, and the prior-year value is matched by **exact
+    calendar date** (``date - yoy_days``). If either sum is null (missing
+    date, too little history or coverage), the growth is null. A zero
+    prior-year sum gives ``inf``/``NaN``.
 
     Parameters
     ----------
     params : Param
         Shared column configuration.
     windows : list[tuple[str, int]], optional
-        ``(name, size)`` rolling-sum windows. Defaults to
+        ``(name, days)`` rolling-sum windows. Defaults to
         ``[("quadweekly", 28), ("quarterly", 91)]``.
     yoy_days : int, default 364
         Calendar-day offset of the comparison period. 364 (52 weeks) keeps
         the day-of-week aligned.
+    min_coverage : float, default 0.8
+        Coverage threshold for both rolling sums; see
+        ``RollingSumBaseFeature``.
 
     Notes
     -----
@@ -134,10 +169,12 @@ class YOYGrowthBaseFeature(BaseFeature):
         params: Param,
         windows: list[tuple[str, int]] | None = None,
         yoy_days: int = 364,
+        min_coverage: float = _DEFAULT_MIN_COVERAGE,
     ) -> None:
         self.params = params
         self.windows = windows if windows is not None else _DEFAULT_YOY_WINDOWS
         self.yoy_days = yoy_days
+        self.min_coverage = _check_min_coverage(min_coverage)
 
     def compute(self, df: pl.DataFrame) -> pl.DataFrame:
         keys = self.params.keys
@@ -149,7 +186,9 @@ class YOYGrowthBaseFeature(BaseFeature):
             df.sort([*keys, date_col]),
             metrics=metrics,
             keys=keys,
+            date_col=date_col,
             windows=self.windows,
+            min_coverage=self.min_coverage,
         )
 
         roll_cols = [
@@ -199,15 +238,19 @@ class POPGrowthBaseFeature(BaseFeature):
     The lag equals the window size, so consecutive non-overlapping periods
     are compared (e.g. the last 28 days vs. the 28 days before). The prior
     value is matched by exact calendar date (``date - w`` days); a missing
-    prior date gives null.
+    prior date gives null. Both sums follow the calendar-day coverage rule
+    of ``RollingSumBaseFeature``.
 
     Parameters
     ----------
     params : Param
         Shared column configuration.
     windows : list[tuple[str, int]], optional
-        ``(name, size)`` windows. Defaults to
+        ``(name, days)`` windows. Defaults to
         ``[("quadweekly", 28), ("quarterly", 91)]``.
+    min_coverage : float, default 0.8
+        Coverage threshold for both rolling sums; see
+        ``RollingSumBaseFeature``.
 
     Notes
     -----
@@ -219,9 +262,11 @@ class POPGrowthBaseFeature(BaseFeature):
         self,
         params: Param,
         windows: list[tuple[str, int]] | None = None,
+        min_coverage: float = _DEFAULT_MIN_COVERAGE,
     ) -> None:
         self.params = params
         self.windows = windows if windows is not None else _DEFAULT_POP_WINDOWS
+        self.min_coverage = _check_min_coverage(min_coverage)
 
     def compute(self, df: pl.DataFrame) -> pl.DataFrame:
         keys = self.params.keys
@@ -232,7 +277,9 @@ class POPGrowthBaseFeature(BaseFeature):
             df.sort([*keys, date_col]),
             metrics=metrics,
             keys=keys,
+            date_col=date_col,
             windows=self.windows,
+            min_coverage=self.min_coverage,
         )
 
         feature_exprs = []
