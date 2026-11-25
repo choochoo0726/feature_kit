@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import numpy as np
 import polars as pl
 
 from feature_kit.params import Comparison, Param, _safe_div
@@ -232,9 +231,9 @@ class RankComparison(Comparison):
 
     Notes
     -----
-    Output columns: ``{base_col}__VS__{bench_col}__RANK``. Uses
-    ``rolling_map`` with a Python callback, so it is much slower than the
-    other comparisons on large panels.
+    Output columns: ``{base_col}__VS__{bench_col}__RANK``. Uses Polars'
+    vectorised ``rolling_rank`` (marked unstable upstream; values are pinned
+    by a regression test).
     """
 
     def __init__(self, params: Param, lookback_window: int) -> None:
@@ -258,13 +257,14 @@ class RankComparison(Comparison):
         rank_exprs, result_cols = [], []
         for diff_col, fc, bc in diff_cols:
             name = f"{fc}__VS__{bc}__RANK"
-            # rolling percentile rank scaled to [-1, 1]
-            rank_expr = pl.col(diff_col).rolling_map(
-                function=lambda s: (s.rank(method="average") / len(s) * 2 - 1).tail(1),
-                window_size=W,
-                min_samples=W,
-            ).over(keys)
-            rank_exprs.append(rank_expr.alias(name))
+            # rolling percentile rank of the last value, scaled to [-1, 1];
+            # null when the window is short or contains a null
+            d = pl.col(diff_col)
+            has_null = d.is_null().cast(pl.Int32).rolling_sum(W, min_samples=1).over(keys) > 0
+            rank = d.rolling_rank(W, method="average", min_samples=W).over(keys)
+            rank_exprs.append(
+                pl.when(has_null).then(None).otherwise(rank / W * 2 - 1).alias(name)
+            )
             result_cols.append(name)
 
         return joined.with_columns(rank_exprs).select([*shared, *result_cols])
@@ -294,10 +294,8 @@ class ResidualComparison(Comparison):
 
     Notes
     -----
-    Output columns: ``{base_col}__VS__{bench_col}__RESIDUAL``. Implemented
-    as a Python/NumPy loop over entities and rows, so cost is roughly
-    ``O(rows x W x pairs)``. It is the slowest component; pair it with
-    a short list of features.
+    Output columns: ``{base_col}__VS__{bench_col}__RESIDUAL``. Vectorised
+    with rolling means and variances, so cost does not grow with ``W``.
 
     A constant benchmark (e.g. ``ZeroBenchmark``) makes the regression
     degenerate: the residual reduces to ``y_t`` minus its window mean.
@@ -314,33 +312,47 @@ class ResidualComparison(Comparison):
         joined = base_df.join(benchmark_df, on=shared, how="left").sort([*keys, date_col])
 
         W = self.lookback_window
-        result_cols = []
-
+        exprs, result_cols = [], []
         for fc, bc in _pair_cols(feature_cols, bench_cols, self.params.metrics):
             out_col = f"{fc}__VS__{bc}__RESIDUAL"
-            residuals = []
-
-            for _, group_df in joined.group_by(keys, maintain_order=True):
-                y = group_df[fc].to_numpy().astype(float)
-                x = group_df[bc].to_numpy().astype(float)
-                n = len(y)
-                resid = np.full(n, np.nan)
-                for i in range(W - 1, n):
-                    y_win = y[i - W + 1: i + 1]
-                    x_win = x[i - W + 1: i + 1]
-                    if np.any(np.isnan(y_win)) or np.any(np.isnan(x_win)):
-                        continue
-                    X = np.column_stack([x_win, np.ones(W)])
-                    try:
-                        beta, *_ = np.linalg.lstsq(X, y_win, rcond=None)
-                        resid[i] = y[i] - (x[i] * beta[0] + beta[1])
-                    except np.linalg.LinAlgError:
-                        pass
-                residuals.extend(resid.tolist())
-
-            joined = joined.with_columns(
-                pl.Series(out_col, [None if np.isnan(v) else v for v in residuals])
-            )
+            exprs.append(_rolling_ols_residual(pl.col(fc), pl.col(bc), W, keys).alias(out_col))
             result_cols.append(out_col)
+        joined = joined.with_columns(exprs)
 
         return joined.select([*shared, *result_cols])
+
+
+def _rolling_ols_residual(y: pl.Expr, x: pl.Expr, W: int, keys: list[str]) -> pl.Expr:
+    """Residual of y_t on the OLS fit y ~ beta * x + alpha over the last W rows, per entity.
+
+    Uses rolling moments:
+    ``beta = cov(x, y) / var(x)``, ``alpha = mean(y) - beta * mean(x)``, with
+    ``cov = (var(x + y) - var(x) - var(y)) / 2``. x and y are first centred on
+    their entity mean (the residual is unchanged by constant shifts), which
+    keeps rolling-variance rounding error small for large-valued series.
+
+    A window with any null, or fewer than W rows, gives null. When x is
+    (numerically) constant in the window, beta is 0 and the residual is
+    ``y_t - mean(y)``, matching the minimum-norm least-squares solution.
+    """
+    x = x.fill_nan(None)
+    y = y.fill_nan(None)
+    both = x.is_not_null() & y.is_not_null()
+    full = both.cast(pl.Int32).rolling_sum(W, min_samples=1).over(keys) == W
+
+    xc = pl.when(both).then(x - x.mean().over(keys))
+    yc = pl.when(both).then(y - y.mean().over(keys))
+
+    def roll_mean(e: pl.Expr) -> pl.Expr:
+        return e.rolling_mean(W, min_samples=W).over(keys)
+
+    def roll_var(e: pl.Expr) -> pl.Expr:
+        return e.rolling_var(W, min_samples=W, ddof=0).over(keys)
+
+    mx, my = roll_mean(xc), roll_mean(yc)
+    vx, vy, vs = roll_var(xc), roll_var(yc), roll_var(xc + yc)
+    cov = (vs - vx - vy) / 2
+    # treat x as constant when its spread is at rounding level relative to its size
+    tiny = (xc.abs().rolling_max(W, min_samples=W).over(keys) * 1e-7) ** 2
+    beta = pl.when(vx > tiny).then(cov / vx).otherwise(0.0)
+    return pl.when(full).then(yc - (beta * xc + my - beta * mx)).otherwise(None)

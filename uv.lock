@@ -416,13 +416,13 @@ name = "feature-kit"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "numpy", version = "2.4.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "polars" },
 ]
 
 [package.optional-dependencies]
 dev = [
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pytest" },
 ]
 
@@ -439,8 +439,8 @@ docs = [
 
 [package.metadata]
 requires-dist = [
-    { name = "numpy", specifier = ">=1.26.0" },
-    { name = "polars", specifier = ">=0.20.0" },
+    { name = "numpy", marker = "extra == 'dev'", specifier = ">=1.26.0" },
+    { name = "polars", specifier = ">=1.35" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
 ]
 provides-extras = ["dev"]
