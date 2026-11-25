@@ -14,11 +14,22 @@ A base feature turns raw daily metrics into the series you actually want to fore
 - **PoP growth** reacts faster (last 28 days vs. the 28 before), but it carries seasonality, so compare it against its own lags or cohorts rather than zero.
 - **Rolling sums** are levels. They feed the projected, cohort and lagged rolling-sum benchmarks, and give growth rates when paired with `RatioComparison`.
 
+## Calendar windows and coverage
+
+A window of *w* covers exactly *w* **calendar days** ending on the row's date. Gaps in an entity's dates never stretch the window:
+
+- **Missing days count as 0.** A day with no row, or a row with a null value, adds nothing to the sum.
+- **Coverage threshold.** The value is null when fewer than `min_coverage` of the *w* days have data. The default `0.8` allows up to 20% missing days; `1.0` requires every day.
+- **Full history required.** The value is null until the entity has *w* days of history, so each entity's first *w − 1* days are null rather than partial sums.
+
+```python
+RollingSumBaseFeature(params, windows=[("quadweekly", 28)], min_coverage=0.9)
+```
+
 ## Details that affect values
 
-- Growth denominators use `abs(prior)`, so the growth sign is correct even when the prior-period sum is negative (e.g. net flows). A zero prior sum gives `inf`/`NaN`.
-- The rolling sum uses `min_samples=1`: each entity's first `w − 1` rows are partial sums, not nulls. For `RollingSumBaseFeature` these early values understate the full-window sum.
-- The YoY and PoP prior values are matched by **exact calendar date**, so a missing date yields null growth instead of a misaligned value.
+- Growth denominators use `abs(prior)`, so the growth sign is correct even when the prior-period sum is negative (e.g. net flows). A zero prior sum gives null.
+- The YoY and PoP prior values are matched by **exact calendar date**, and both sums follow the coverage rule above. A missing date or low coverage on either side gives null growth instead of a misaligned value.
 
 ```python
 from feature_kit import Param, YOYGrowthBaseFeature

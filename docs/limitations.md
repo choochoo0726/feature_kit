@@ -1,6 +1,6 @@
 # Known limitations
 
-The current behaviour, verified against the code, that you should account for when using signals for research or trading. Each item is a candidate for a future fix.
+Behaviour to account for when using the signals for research or trading.
 
 ## Look-ahead risk
 
@@ -12,36 +12,17 @@ The current behaviour, verified against the code, that you should account for wh
 
 Every component treats `date_col` as the date on which the value was known. If your vendor restates or backfills history, use a point-in-time snapshot, or the signals will look better in backtests than they will live.
 
-## Data layout
+## Windows
 
-### Rolling windows count rows, not days
+### Missing days count as zero in rolling sums
 
-Rolling sums, z-scores, ranks and residuals use the **last N rows** of each entity. Lags and YoY/PoP offsets match **exact calendar dates**. With a missing day, a "28-day" sum covers 29 calendar days while lags remain calendar-exact. Reindex each entity to a complete daily calendar before computing.
+Base-feature windows cover exact calendar days, and a missing day contributes **0** to the sum (up to the `min_coverage` threshold, 20% missing by default). For a metric where a missing day means "no data" rather than "no activity", the sum understates the true total by up to that share. Raise `min_coverage` (e.g. `1.0`) if that matters. See [Base features](guide/base-features.md#calendar-windows-and-coverage).
 
-### Standalone transformations default to `specid` and `DATADATE`
+### Comparison lookbacks count observations
 
-A transformation used outside the builder without `params=` assumes the key and date columns are `specid` and `DATADATE`. With other names, pass `params`, or it will treat your key columns as features (clip fails on string keys, and numeric keys are silently modified). Inside `FeatureBuilder` the builder's `params` is used automatically.
-
-## Pairing and output size
-
-### Unprefixed benchmarks pair with every metric
-
-`ZERO_BENCHMARK` and the IBES columns have no metric prefix, so with `metrics=["SALES", "TXN"]` the IBES *sales* consensus is also compared with `TXN` growth.
-
-### Comparisons without `params` skip same-metric filtering
-
-`DifferenceComparison()`, `SignComparison()` and `RatioComparison()` without `params` still pair feature-derived benchmarks only with their source feature. But a custom benchmark column with a metric prefix that doesn't match a full feature name is then paired with every feature. See [Concepts → pairing](concepts.md#featurebenchmark-pairing).
+`ZScoreComparison`, `RankComparison` and `ResidualComparison` use the entity's **last W rows**, not the last W calendar days. With complete daily data the two are the same. With gaps, the lookback spans more calendar time.
 
 ## Benchmarks
 
-- **Cohort includes the entity itself.** In small cohorts this pulls the benchmark toward the entity's own value. A leave-one-out mean is not available yet.
-- **IBES row order.** The IBES join sorts by date only and joins with `by=keys`, which triggers a Polars warning that sortedness can't be checked. It works when the input is sorted by date, but the output row order is by date rather than by entity.
-
-## Edge values
-
-- **Partial early windows:** rolling sums use `min_samples=1`, so each entity's first `w − 1` rows are partial sums rather than nulls.
-- **Division by zero:** YoY/PoP growth with a zero prior sum and `RatioComparison` with a zero benchmark give `inf`/`NaN` (not null). Filter with `pl.col(c).is_finite()`.
-
-## Performance
-
-`RankComparison` (Python callback in `rolling_map`) and `ResidualComparison` (NumPy loop over every row) scale poorly. On a panel of thousands of entities × years × many column pairs, they dominate runtime.
+- **Cohort includes the entity itself by default.** Pass `exclude_self=True` to `CohortRollingSumBenchmark` for a peers-only (leave-one-out) benchmark.
+- **`rolling_rank` is marked unstable in Polars.** `RankComparison` relies on it. A regression test pins its values, so a behaviour change in a future Polars release would show up as a test failure.

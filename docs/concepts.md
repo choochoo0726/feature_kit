@@ -19,7 +19,8 @@ Column names record how each column was computed, using double underscores as se
 ```text
 {METRIC}__{FEATURE}__{WINDOW}                                    base feature
 {METRIC}__{FEATURE}__{WINDOW}__{BENCHMARK SUFFIX}                metric-derived benchmark
-ZERO_BENCHMARK / IBES_..._BENCHMARK                              standalone benchmark
+ZERO_BENCHMARK                                                   standalone benchmark
+{METRIC}__IBES_{FREQ}_SALES_GROWTH_BENCHMARK                     metric-scoped external benchmark
 {base_col}__VS__{bench_col}__{COMPARISON}                        comparison (final signal)
 ```
 
@@ -50,11 +51,10 @@ This has two consequences:
 A comparison receives the base-feature frame and one benchmark frame, then builds pairs:
 
 1. A benchmark column **derived from a specific feature** (named `{feature}__...`, e.g. `SALES__YOY_GROWTH__QUADWEEKLY__LAG1MONTH`) is paired **only with that feature**: same metric *and* same window. The 28-day feature is never compared with the lagged 91-day benchmark, and `SALES` is never compared with lagged `TXN`.
-2. A benchmark column with a metric prefix that doesn't match a whole feature name (e.g. from a custom benchmark) is paired with every feature of that metric. This rule needs `params` on the comparison.
-3. A benchmark column **without** a metric prefix (`ZERO_BENCHMARK`, `IBES_*`) is paired with **every** feature.
+2. A benchmark column with a **metric prefix** that doesn't match a whole feature name (e.g. `SALES__IBES_QUARTERLY_SALES_GROWTH_BENCHMARK`) is paired with every feature of **that metric**.
+3. A benchmark column **without** a metric prefix (`ZERO_BENCHMARK`) is paired with **every** feature.
 
-!!! note
-    `DifferenceComparison`, `SignComparison` and `RatioComparison` accept `params=None`. Rules 1 and 3 still apply, but rule 2 is skipped, so such a benchmark column is paired with every feature. Pass `params` to be safe.
+Metrics are read from the feature column names (the text before the first `__`), so these rules apply whether or not the comparison was given `params`.
 
 ## How `FeatureBuilder` combines stages
 

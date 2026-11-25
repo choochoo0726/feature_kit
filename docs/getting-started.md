@@ -2,7 +2,7 @@
 
 ## Installation
 
-feature_kit needs Python ≥ 3.10, Polars ≥ 0.20 and NumPy ≥ 1.26.
+feature_kit needs Python ≥ 3.10 and Polars ≥ 1.35.
 
 ```bash
 git clone git@github.com:choochoo0726/feature_kit.git
@@ -29,8 +29,8 @@ Every component takes a **long-format Polars DataFrame** with one row per entity
 | metric columns | numeric | e.g. `SALES`, `TXN`. Set via `Param.metrics`. |
 | extra columns | any | Only needed by specific components, e.g. a cohort column for `CohortRollingSumBenchmark`. |
 
-!!! warning "Use one row per calendar day, with no gaps"
-    Rolling windows count **rows**, while lags and YoY offsets are matched by **calendar date**. These agree only when every entity has a row for every day. Fill missing days (e.g. with zero or null) before computing. See [Known limitations](limitations.md#rolling-windows-count-rows-not-days).
+!!! note "Gaps in dates are handled"
+    Rolling windows cover exact calendar days, and missing days count as zero. A window is null when more than 20% of its days are missing (adjustable with `min_coverage`), or before the entity has a full window of history. See [Base features](guide/base-features.md#calendar-windows-and-coverage).
 
 ## End-to-end example
 

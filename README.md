@@ -36,7 +36,7 @@ cd feature_kit
 uv sync
 ```
 
-**Requirements:** Python ≥ 3.11, Polars ≥ 0.20, NumPy ≥ 1.26
+**Requirements:** Python ≥ 3.10, Polars ≥ 1.35
 
 ## Input Format
 
@@ -59,7 +59,7 @@ raw_df = pl.DataFrame({
 })
 ```
 
-> **Note:** Rolling windows are **row-count-based**, not calendar-day-based. For daily data with no gaps, these are equivalent. Ensure there are no missing dates within each entity if calendar-day semantics matter.
+> **Note:** Rolling windows cover exact **calendar days**; missing days count as zero. A window is null when more than 20% of its days are missing (`min_coverage=0.8`) or before the entity has a full window of history.
 
 ---
 
@@ -151,21 +151,24 @@ from feature_kit import (
 # Constant zero — "is growth positive?"
 bench = ZeroBenchmark(params)
 
-# Lagged versions of YoY growth (7, 14, 28, 91 days ago by default)
-bench = LaggedYOYGrowthBenchmark(params, lags=[7, 28])
-# Output columns: SALES__YOY_GROWTH__QUARTERLY__LAG7_BENCHMARK, ...
+# Lagged versions of YoY growth: named (name, days) periods x num_lags
+# (defaults: week 7, month 28, quarter 91; num_lags=1)
+bench = LaggedYOYGrowthBenchmark(params, periods=[("week", 7), ("month", 28)], num_lags=2)
+# Output columns: SALES__YOY_GROWTH__QUARTERLY__LAG1WEEK, ...__LAG2WEEK, ...
 
 # Lagged rolling sum
-bench = LaggedRollingSumBenchmark(params, lags=[7, 28])
+bench = LaggedRollingSumBenchmark(params, periods=[("month", 28)])
 
 # YoY-projected rolling sum: Sum_yoy * Sum_lag / Sum_(yoy+lag)
-bench = LaggedYOYProjectedRollingSumBenchmark(params, lags=[7, 28])
+bench = LaggedYOYProjectedRollingSumBenchmark(params, periods=[("month", 28)])
 
-# IBES sell-side consensus (requires external data)
+# IBES sell-side consensus (requires external data); output column is
+# SALES__IBES_QUARTERLY_SALES_GROWTH_BENCHMARK (metric= needed with several metrics)
 bench = IBESConsensusSalesGrowthBenchmark(params, freq="quarterly")
 # Pass external_dfs={"ibes": ibes_df} to builder.compute()
 
-# Cohort peer benchmark (mean or median within cohort group per date)
+# Cohort peer benchmark (mean or median within cohort group per date);
+# exclude_self=True for a peers-only (leave-one-out) benchmark
 bench = CohortRollingSumBenchmark(params, cohort_cols=["sector"], agg="median")
 
 # Compute independently
@@ -226,7 +229,7 @@ from feature_kit import (
 # Hard clip to [lower, upper]
 t = ClipTransformation(lower=-3.0, upper=3.0)
 
-# Clip to [lower_q, upper_q] quantiles (cross-sectional)
+# Clip to [lower_q, upper_q] quantiles, computed per date across entities
 t = WinsorizeTransformation(lower_q=0.01, upper_q=0.99)
 
 # Scale 0→1 based on entity age: useful for ramping in new entities
@@ -235,8 +238,10 @@ t = RampUpTransformation(age_col="age_days", min_age=0, max_age=365)
 # Scale 1→0 based on entity age: useful for ramping out stale entities
 t = RampDownTransformation(age_col="age_days", min_age=0, max_age=365)
 
-# Compute independently (operates on all non-key, non-date columns)
-result_df = t.compute(comp_df)
+# Compute independently (operates on all non-key, non-date columns).
+# Ramps need the age column in the frame; inside FeatureBuilder it is
+# joined from the raw input automatically.
+result_df = ClipTransformation(lower=-3.0, upper=3.0).compute(comp_df)
 ```
 
 ### 6. Assemble with FeatureBuilder
@@ -257,7 +262,7 @@ builder = FeatureBuilder(
     base_feature=YOYGrowthBaseFeature(params, windows=[("quarterly", 91)]),
     benchmarks=[
         ZeroBenchmark(params),
-        LaggedYOYGrowthBenchmark(params, lags=[28, 91]),
+        LaggedYOYGrowthBenchmark(params, periods=[("month", 28), ("quarter", 91)]),
     ],
     comparisons=[
         DifferenceComparison(),
@@ -273,8 +278,8 @@ print(result.columns)
 # ['specid', 'DATADATE',
 #  'SALES__YOY_GROWTH__QUARTERLY__VS__ZERO_BENCHMARK__DIFFERENCE',
 #  'SALES__YOY_GROWTH__QUARTERLY__VS__ZERO_BENCHMARK__ZSCORE',
-#  'SALES__YOY_GROWTH__QUARTERLY__VS__SALES__YOY_GROWTH__QUARTERLY__LAG28_BENCHMARK__DIFFERENCE',
-#  'SALES__YOY_GROWTH__QUARTERLY__VS__SALES__YOY_GROWTH__QUARTERLY__LAG28_BENCHMARK__ZSCORE',
+#  'SALES__YOY_GROWTH__QUARTERLY__VS__SALES__YOY_GROWTH__QUARTERLY__LAG1MONTH__DIFFERENCE',
+#  'SALES__YOY_GROWTH__QUARTERLY__VS__SALES__YOY_GROWTH__QUARTERLY__LAG1MONTH__ZSCORE',
 #  ...]
 ```
 
@@ -305,21 +310,21 @@ result = builder.compute(raw_df, external_dfs={"ibes": ibes_df})
 
 | Class | Output columns | Key params |
 |-------|---------------|------------|
-| `RollingSumBaseFeature` | `{METRIC}__ROLLING_SUM__{WINDOW}` | `windows` |
-| `YOYGrowthBaseFeature` | `{METRIC}__YOY_GROWTH__{WINDOW}` | `windows`, `yoy_days=364` |
-| `POPGrowthBaseFeature` | `{METRIC}__POP_GROWTH__{WINDOW}` | `windows` |
+| `RollingSumBaseFeature` | `{METRIC}__ROLLING_SUM__{WINDOW}` | `windows`, `min_coverage=0.8` |
+| `YOYGrowthBaseFeature` | `{METRIC}__YOY_GROWTH__{WINDOW}` | `windows`, `yoy_days=364`, `min_coverage=0.8` |
+| `POPGrowthBaseFeature` | `{METRIC}__POP_GROWTH__{WINDOW}` | `windows`, `min_coverage=0.8` |
 
 ### Benchmarks
 
 | Class | Output columns | Key params |
 |-------|---------------|------------|
 | `ZeroBenchmark` | `ZERO_BENCHMARK` | — |
-| `LaggedYOYGrowthBenchmark` | `{col}__LAG{K}_BENCHMARK` | `lags=[7,14,28,91]` |
-| `LaggedPOPGrowthBenchmark` | `{col}__LAG{K}_BENCHMARK` | `lags=[7,14,28,91]` |
-| `LaggedRollingSumBenchmark` | `{col}__LAG{K}_BENCHMARK` | `lags=[7,14,28,91]` |
-| `LaggedYOYProjectedRollingSumBenchmark` | `{col}__LAG{K}_YOY_PROJECTED_BENCHMARK` | `lags`, `yoy_days=364` |
-| `IBESConsensusSalesGrowthBenchmark` | `IBES_{FREQ}_SALES_GROWTH_BENCHMARK` | `freq="quarterly"` |
-| `CohortRollingSumBenchmark` | `{col}__COHORT_BENCHMARK` | `cohort_cols`, `agg="mean"` |
+| `LaggedYOYGrowthBenchmark` | `{col}__LAG{n}{PERIOD}` | `periods=[("week",7),("month",28),("quarter",91)]`, `num_lags=1` |
+| `LaggedPOPGrowthBenchmark` | `{col}__LAG{n}{PERIOD}` | `periods`, `num_lags=1` |
+| `LaggedRollingSumBenchmark` | `{col}__LAG{n}{PERIOD}` | `periods`, `num_lags=1` |
+| `LaggedYOYProjectedRollingSumBenchmark` | `{col}__LAG{n}{PERIOD}_YOY_PROJECTED` | `periods`, `num_lags=1`, `yoy_days=364` |
+| `IBESConsensusSalesGrowthBenchmark` | `{METRIC}__IBES_{FREQ}_SALES_GROWTH_BENCHMARK` | `freq="quarterly"`, `metric` |
+| `CohortRollingSumBenchmark` | `{col}__COHORT_BENCHMARK` | `cohort_cols`, `agg="mean"`, `exclude_self=False` |
 
 ### Comparisons
 
@@ -347,10 +352,10 @@ result = builder.compute(raw_df, external_dfs={"ibes": ibes_df})
 
 ```bash
 # Run all tests
-uv run pytest
+uv run --extra dev pytest
 
 # Run a specific test file
-uv run pytest tests/test_builder.py -v
+uv run --extra dev pytest tests/test_builder.py -v
 ```
 
 Tests are organized to mirror the module structure under `tests/`.

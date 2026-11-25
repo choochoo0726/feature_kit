@@ -288,8 +288,8 @@
       <!-- 2. Base feature -->
       <rect x="220" y="118" width="420" height="80" rx="10" class="box-s1"/>
       <text x="430" y="144" text-anchor="middle" class="t">Stage 1 · BaseFeature.compute(raw_df)</text>
-      <text x="430" y="164" text-anchor="middle" class="d">sort by keys, date → N-row rolling sums per entity</text>
-      <text x="430" y="182" text-anchor="middle" class="d">YoY / PoP: join the sum from date − offset (calendar-exact)</text>
+      <text x="430" y="164" text-anchor="middle" class="d">sort by keys, date → N-calendar-day rolling sums per entity</text>
+      <text x="430" y="182" text-anchor="middle" class="d">null below min_coverage · YoY / PoP: join sum from date − offset</text>
 
       <path d="M430,198 L430,262" class="edge" marker-end="url(#tri2)"/>
       <text x="440" y="216" class="lbl">base_df</text>
@@ -425,8 +425,8 @@ SALES__YOY_GROWTH__QUADWEEKLY__VS__SALES__YOY_GROWTH__QUADWEEKLY__LAG1MONTH__ZSC
 
       <!-- Q2 -->
       <rect x="20" y="174" width="340" height="56" rx="10" class="box-q"/>
-      <text x="190" y="198" text-anchor="middle" class="t">params given and metric prefix?</text>
-      <text x="190" y="218" text-anchor="middle" class="m">e.g. SALES__CUSTOM_BENCHMARK</text>
+      <text x="190" y="198" text-anchor="middle" class="t">Starts with a metric name + "__"?</text>
+      <text x="190" y="218" text-anchor="middle" class="m">e.g. SALES__IBES_QUARTERLY_…</text>
       <path d="M360,202 L476,202" class="edge" marker-end="url(#tri3)"/>
       <text x="418" y="194" text-anchor="middle" class="yn">yes</text>
       <rect x="480" y="178" width="400" height="48" rx="10" class="box-yes"/>
@@ -438,7 +438,7 @@ SALES__YOY_GROWTH__QUADWEEKLY__VS__SALES__YOY_GROWTH__QUADWEEKLY__LAG1MONTH__ZSC
       <!-- Default -->
       <rect x="20" y="260" width="340" height="56" rx="10" class="box-no"/>
       <text x="190" y="284" text-anchor="middle" class="t">Pair with every feature</text>
-      <text x="190" y="304" text-anchor="middle" class="m">ZERO_BENCHMARK, IBES_…</text>
+      <text x="190" y="304" text-anchor="middle" class="m">ZERO_BENCHMARK</text>
     </svg>
   </div>
 </section>
@@ -446,13 +446,13 @@ SALES__YOY_GROWTH__QUADWEEKLY__VS__SALES__YOY_GROWTH__QUADWEEKLY__LAG1MONTH__ZSC
 <!-- ============================================================ -->
 <section id="modules">
   <h2>Modules</h2>
-  <p class="sub">Small flat package (about 1,700 lines including docstrings). Everything except presets is re-exported from <code>feature_kit</code>.</p>
+  <p class="sub">Small flat package (about 1,900 lines including docstrings). Everything except presets is re-exported from <code>feature_kit</code>.</p>
   <div class="table-wrap">
     <table>
       <thead><tr><th>Module</th><th>Responsibility</th><th>Key internals</th></tr></thead>
       <tbody>
         <tr><td><code>params.py</code></td><td><code>Param</code> and the four abstract base classes</td><td><code>Transformation.params</code>, <code>required_columns</code></td></tr>
-        <tr><td><code>base_features.py</code></td><td>Rolling sum, YoY growth, PoP growth</td><td><code>_rolling_sum</code> (row-based, <code>min_samples=1</code>)</td></tr>
+        <tr><td><code>base_features.py</code></td><td>Rolling sum, YoY growth, PoP growth</td><td><code>_rolling_sum</code> (calendar days, coverage rule)</td></tr>
         <tr><td><code>benchmarks.py</code></td><td>Zero, lagged ×3, projected, cohort, IBES</td><td>lags as date shift + left join</td></tr>
         <tr><td><code>comparisons.py</code></td><td>Pointwise and rolling comparisons</td><td><code>_shared_and_feature_cols</code>, <code>_pair_cols</code></td></tr>
         <tr><td><code>transformations.py</code></td><td>Clip, winsorize, ramps</td><td><code>_feature_cols</code> (excludes keys, date, extras)</td></tr>
@@ -475,7 +475,9 @@ SALES__YOY_GROWTH__QUADWEEKLY__VS__SALES__YOY_GROWTH__QUADWEEKLY__LAG1MONTH__ZSC
     <li><b>Builder is a full cross product.</b><span>Every comparison runs against every benchmark. Simple to reason about, but output width grows multiplicatively: metrics × windows × benchmark columns × comparisons.</span></li>
     <li><b>Point-in-time by default.</b><span>Winsorize uses per-date quantiles, IBES uses a backward as-of join, and rolling statistics only look backwards. Full-sample winsorizing is opt-in (<code>scope="pooled"</code>).</span></li>
     <li><b>Builder output is signals only.</b><span>Columns a transformation needs (e.g. an age column) are joined from the raw input just for that step and dropped afterwards.</span></li>
-    <li><b>Polars throughout.</b><span>Vectorised expressions with <code>.over(keys)</code> for per-entity work. The exceptions are <code>RankComparison</code> (Python callback) and <code>ResidualComparison</code> (NumPy loop).</span></li>
+    <li><b>Polars throughout.</b><span>Vectorised expressions with <code>.over(keys)</code> for per-entity work, including the rolling rank and rolling OLS residual comparisons. Polars is the only runtime dependency.</span></li>
+    <li><b>Calendar windows with a coverage rule.</b><span>Rolling sums cover exact calendar days; missing days count as zero, and a window is null below <code>min_coverage</code> (default 80% of days) or before the entity has a full window of history.</span></li>
+    <li><b>Zero denominators give null.</b><span>Growth rates, ratios and projections return null rather than <code>inf</code>/<code>NaN</code>, so downstream models never see infinities.</span></li>
   </ul>
 </section>
 
@@ -513,11 +515,10 @@ SALES__YOY_GROWTH__QUADWEEKLY__VS__SALES__YOY_GROWTH__QUADWEEKLY__LAG1MONTH__ZSC
   <p class="sub">Current behaviour to account for. Details are in the docs site's <i>Known limitations</i> page.</p>
   <div class="note">
     <ul style="margin:0; padding-left:18px">
-      <li><b>Rows vs. days:</b> rolling windows count rows while lags match calendar dates; reindex each entity to a complete daily calendar first.</li>
-      <li><b>Unprefixed benchmarks</b> (zero, IBES) pair with every metric, including non-sales metrics for the IBES sales consensus.</li>
-      <li><b>Cohort benchmark</b> includes the entity itself in its cohort's aggregate.</li>
-      <li><b>Edge values:</b> rolling sums start with partial windows; division by zero gives <code>inf</code>/<code>NaN</code>, not null.</li>
-      <li><b>Performance:</b> rank and residual comparisons are slow on large panels.</li>
+      <li><b>Missing days count as zero</b> in rolling sums (up to the <code>min_coverage</code> threshold); raise it if a missing day means "no data" rather than "no activity".</li>
+      <li><b>Comparison lookbacks</b> (z-score, rank, residual) count the last W observations, not W calendar days.</li>
+      <li><b>Cohort benchmark</b> includes the entity itself unless <code>exclude_self=True</code>.</li>
+      <li><b>Pooled winsorizing</b> (<code>scope="pooled"</code>) uses future data; the default per-date scope does not.</li>
     </ul>
   </div>
 </section>

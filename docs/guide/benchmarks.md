@@ -12,7 +12,7 @@ Every benchmark's `compute(base_df, raw_df, external_dfs=None)` returns one row 
 | [`LaggedRollingSumBenchmark`](../api/benchmarks.md#feature_kit.benchmarks.LaggedRollingSumBenchmark) | rolling sum | rolling sum at *t − n·days* | `…__LAG1MONTH` |
 | [`LaggedYOYProjectedRollingSumBenchmark`](../api/benchmarks.md#feature_kit.benchmarks.LaggedYOYProjectedRollingSumBenchmark) | rolling sum | \(S_{t-Y} \cdot S_{t-L} / S_{t-Y-L}\) | `…__LAG1MONTH_YOY_PROJECTED` |
 | [`CohortRollingSumBenchmark`](../api/benchmarks.md#feature_kit.benchmarks.CohortRollingSumBenchmark) | rolling sum | cohort mean/median on date *t* | `…__COHORT_BENCHMARK` |
-| [`IBESConsensusSalesGrowthBenchmark`](../api/benchmarks.md#feature_kit.benchmarks.IBESConsensusSalesGrowthBenchmark) | YoY growth | latest consensus dated ≤ *t* | `IBES_QUARTERLY_SALES_GROWTH_BENCHMARK` |
+| [`IBESConsensusSalesGrowthBenchmark`](../api/benchmarks.md#feature_kit.benchmarks.IBESConsensusSalesGrowthBenchmark) | YoY growth | latest consensus dated ≤ *t* | `SALES__IBES_QUARTERLY_SALES_GROWTH_BENCHMARK` |
 
 ## Lagged benchmarks: `periods` and `num_lags`
 
@@ -37,7 +37,7 @@ With `RatioComparison`, the signal is how far the current period is running ahea
 
 ## Cohort benchmark
 
-`CohortRollingSumBenchmark(params, cohort_cols=["SECTOR"], agg="median")` reads `SECTOR` from `raw_df`, so the raw frame must contain it. The entity is included in its own cohort's aggregate, which pulls the benchmark toward the entity's own value in small cohorts.
+`CohortRollingSumBenchmark(params, cohort_cols=["SECTOR"], agg="median")` reads `SECTOR` from `raw_df`, so the raw frame must contain it. By default the entity is included in its own cohort's aggregate, which pulls the benchmark toward the entity's own value in small cohorts. Pass `exclude_self=True` for a leave-one-out benchmark built from peers only (mean or median). A cohort with no other non-null member then gives null.
 
 !!! tip
     Cohort means of rolling-sum **levels** are dominated by the largest entities. For a relative-performance signal, usually compare growth rates, or use the ratio comparison on per-entity normalised levels.
@@ -54,4 +54,10 @@ ibes_df = pl.DataFrame({
 builder.compute(raw_df, external_dfs={"ibes": ibes_df})
 ```
 
-The backward as-of join uses only consensus published on or before each date. The column has no metric prefix, so it is compared with every feature column. Use it with a single-metric `Param`, or one whose metric is actually sales.
+The backward as-of join uses only consensus published on or before each date, and the output keeps the row order of `base_df`.
+
+The output column is prefixed with the metric the consensus describes, e.g. `SALES__IBES_QUARTERLY_SALES_GROWTH_BENCHMARK`, so it is compared only with that metric's features. With a single-metric `Param` the metric is picked automatically; with several, name it:
+
+```python
+IBESConsensusSalesGrowthBenchmark(params, freq="quarterly", metric="SALES")
+```

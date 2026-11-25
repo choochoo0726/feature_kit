@@ -17,7 +17,7 @@ Let \(d_t = \text{feature}_t - \text{benchmark}_t\).
 
 - **Difference** is the default. With growth features it is in growth units (e.g. +0.03 = 3 points above benchmark).
 - **Sign** is a robust direction-only signal and is useful as a model feature that ignores magnitude outliers.
-- **Ratio** is for level benchmarks (lagged or projected rolling sums), where it gives a growth rate. Don't use it with `ZeroBenchmark` (division by zero) or with growth benchmarks near zero.
+- **Ratio** is for level benchmarks (lagged or projected rolling sums), where it gives a growth rate. A zero benchmark gives null, so it is meaningless with `ZeroBenchmark`; avoid growth benchmarks near zero too.
 
 ## Rolling comparisons
 
@@ -25,7 +25,7 @@ Let \(d_t = \text{feature}_t - \text{benchmark}_t\).
 
 - The window `lookback_window` counts rows, including today. The first *W − 1* rows of each entity are null.
 - All three are **time-series** statistics within an entity. None is cross-sectional across entities. For a cross-sectional rank on each date, rank the output downstream, e.g. `pl.col(c).rank().over("DATADATE")`.
-- **Speed:** z-score is vectorised Polars. Rank uses `rolling_map` with a Python callback, and residual is a NumPy loop over every row. Both are much slower on large panels, so restrict them to the few feature/benchmark pairs you need.
+- **Speed:** all three are vectorised Polars expressions. Residual uses rolling means and variances, so its cost does not grow with *W*.
 
 ```python
 from feature_kit import ZScoreComparison

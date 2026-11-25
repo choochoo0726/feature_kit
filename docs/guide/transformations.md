@@ -2,7 +2,7 @@
 
 Transformations post-process signal columns. They take and return a frame with the same columns. Every column except the key and date columns (and the age column, for ramps) is treated as a feature.
 
-Key and date names come from the optional `params=` argument. Without it, `specid` / `DATADATE` are assumed. Inside `FeatureBuilder` you can leave it out: the builder supplies its own `params`.
+Key and date names come from the optional `params=` argument. Without it, `specid` / `DATADATE` are assumed, and a `ValueError` asks for `params` if those columns aren't in the frame. Inside `FeatureBuilder` you can leave it out: the builder supplies its own `params`.
 
 | Class | Effect |
 |---|---|
@@ -43,7 +43,7 @@ builder = FeatureBuilder(
 signals = builder.compute(raw_df)   # no AGE_DAYS column in the output
 ```
 
-If the age column is missing from the input, `compute` raises a `ValueError` naming it.
+If the age column is missing from the input, `compute` raises a `ValueError` naming it. `max_age` must be greater than `min_age`.
 
 **Standalone**, the age column must be in the frame you pass to `compute`:
 
