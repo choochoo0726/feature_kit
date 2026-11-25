@@ -45,6 +45,7 @@ signals = builder.compute(raw_df)   # one row per (specid, DATADATE)
 ## Where to go next
 
 - **[Getting started](getting-started.md)**: installation, input format and a runnable end-to-end example.
+- **[Design overview](design.html)**: architecture, workflow flowchart and design decisions on one page.
 - **[Concepts](concepts.md)**: column naming, how benchmarks align by date, and how features are paired with benchmarks.
 - **[User guide](guide/base-features.md)**: what each component computes and when to use it.
 - **[Known limitations](limitations.md)**: read this before using the signals in a backtest.

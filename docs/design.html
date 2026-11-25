@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>feature_kit Design</title>
+<meta name="description" content="Architecture, data contract and workflow of the feature_kit signal pipeline.">
+<style>
+  :root {
+    --bg: #f7f7f5;
+    --surface: #ffffff;
+    --surface-2: #f0f0ec;
+    --text: #1d1d1b;
+    --muted: #5f5f5a;
+    --border: #d9d9d3;
+    --accent: #3b4cc0;
+    --accent-soft: #e6e9fb;
+    --s1: #2f7d6d;  --s1-soft: #e3f2ee;
+    --s2: #a2611a;  --s2-soft: #f8ecdc;
+    --s3: #3b4cc0;  --s3-soft: #e6e9fb;
+    --s4: #8e3b8a;  --s4-soft: #f4e5f3;
+    --io: #4a4a46;  --io-soft: #ececE7;
+    --warn: #a3361f; --warn-soft: #fbe8e3;
+    --code-bg: #f0f0ec;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #151514; --surface: #1d1d1b; --surface-2: #252523; --text: #ececE7;
+      --muted: #a3a39c; --border: #3a3a36; --accent: #8f9cf5; --accent-soft: #262b4d;
+      --s1: #6cc3b0; --s1-soft: #1b2f2a; --s2: #e0a25a; --s2-soft: #33271a;
+      --s3: #8f9cf5; --s3-soft: #232846; --s4: #d48fd0; --s4-soft: #32222f;
+      --io: #c9c9c2; --io-soft: #2a2a27; --warn: #f08c74; --warn-soft: #3a211b;
+      --code-bg: #252523;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #151514; --surface: #1d1d1b; --surface-2: #252523; --text: #ececE7;
+    --muted: #a3a39c; --border: #3a3a36; --accent: #8f9cf5; --accent-soft: #262b4d;
+    --s1: #6cc3b0; --s1-soft: #1b2f2a; --s2: #e0a25a; --s2-soft: #33271a;
+    --s3: #8f9cf5; --s3-soft: #232846; --s4: #d48fd0; --s4-soft: #32222f;
+    --io: #c9c9c2; --io-soft: #2a2a27; --warn: #f08c74; --warn-soft: #3a211b;
+    --code-bg: #252523;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.6 var(--sans);
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 40px 16px 80px; }
+  header { margin-bottom: 40px; }
+  .eyebrow { font: 600 13px/1 var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+  h1 { font-size: clamp(30px, 5vw, 42px); line-height: 1.15; margin: 10px 0 12px; letter-spacing: -.01em; }
+  .lede { font-size: 18px; color: var(--muted); max-width: 680px; margin: 0; }
+  nav.toc { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+  nav.toc a {
+    font-size: 14px; color: var(--text); text-decoration: none; padding: 5px 12px;
+    border: 1px solid var(--border); border-radius: 999px; background: var(--surface);
+  }
+  nav.toc a:hover { border-color: var(--accent); color: var(--accent); }
+
+  section { margin-top: 56px; }
+  h2 { font-size: 24px; margin: 0 0 6px; letter-spacing: -.005em; }
+  h2 + .sub { color: var(--muted); margin: 0 0 20px; }
+  h3 { font-size: 17px; margin: 24px 0 8px; }
+  p { margin: 0 0 12px; }
+  code { font-family: var(--mono); font-size: .86em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+  pre { font: 13.5px/1.55 var(--mono); background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; overflow-x: auto; margin: 0 0 12px; }
+  pre code { background: none; padding: 0; font-size: inherit; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+  .figure { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .figure svg { display: block; width: 100%; height: auto; }
+  @media (max-width: 700px) { .figure { overflow-x: auto; } .figure svg { min-width: 660px; } }
+  .caption { font-size: 14px; color: var(--muted); margin-top: 10px; }
+
+  .stages { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  @media (max-width: 760px) { .stages { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 440px) { .stages { grid-template-columns: 1fr; } }
+  .stage { border-radius: 12px; padding: 16px; border: 1px solid var(--border); background: var(--surface); border-top: 4px solid var(--c); }
+  .stage .n { font: 600 12px/1 var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--c); }
+  .stage h4 { margin: 6px 0 6px; font-size: 16px; }
+  .stage p { font-size: 14px; color: var(--muted); margin: 0 0 10px; }
+  .stage ul { margin: 0; padding-left: 18px; font-size: 13.5px; }
+  .stage li { margin: 2px 0; }
+  .stage li code { font-size: 12px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-weight: 600; background: var(--surface-2); }
+  tr:last-child td { border-bottom: none; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid2 > * { min-width: 0; }
+  @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+
+  .decisions { display: grid; gap: 12px; padding: 0; margin: 0; }
+  .decisions li { list-style: none; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .decisions b { display: block; margin-bottom: 4px; }
+  .decisions span { color: var(--muted); font-size: 15px; }
+
+  .note { border-left: 4px solid var(--warn); background: var(--warn-soft); border-radius: 0 10px 10px 0; padding: 12px 16px; font-size: 15px; }
+  .tag { display: inline-block; font: 600 11px/1 var(--sans); letter-spacing: .05em; text-transform: uppercase; padding: 4px 7px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); vertical-align: 2px; }
+
+  /* SVG styling */
+  .fc text { font-family: var(--sans); fill: var(--text); }
+  .fc .t { font-size: 15px; font-weight: 600; }
+  .fc .d { font-size: 12.5px; fill: var(--muted); }
+  .fc .m { font-family: var(--mono); font-size: 12px; fill: var(--muted); }
+  .fc .lbl { font-family: var(--mono); font-size: 11.5px; fill: var(--muted); }
+  .fc .edge { stroke: var(--muted); stroke-width: 1.6; fill: none; }
+  .fc .side { stroke: var(--muted); stroke-width: 1.3; fill: none; stroke-dasharray: 5 4; }
+  .fc .arrow { fill: var(--muted); }
+  .fc .box-io { fill: var(--io-soft); stroke: var(--io); stroke-width: 1.4; }
+  .fc .box-s1 { fill: var(--s1-soft); stroke: var(--s1); stroke-width: 1.4; }
+  .fc .box-s2 { fill: var(--s2-soft); stroke: var(--s2); stroke-width: 1.4; }
+  .fc .box-s3 { fill: var(--s3-soft); stroke: var(--s3); stroke-width: 1.4; }
+  .fc .box-s4 { fill: var(--s4-soft); stroke: var(--s4); stroke-width: 1.4; }
+  .fc .box-merge { fill: var(--surface-2); stroke: var(--border); stroke-width: 1.4; }
+  .fc .box-q { fill: var(--surface); stroke: var(--accent); stroke-width: 1.4; }
+  .fc .box-yes { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.2; }
+  .fc .box-no { fill: var(--surface-2); stroke: var(--border); stroke-width: 1.2; }
+  .fc .loop { fill: none; stroke: var(--border); stroke-width: 1.4; stroke-dasharray: 6 5; }
+  .fc .loop-t { font-size: 12px; font-weight: 600; fill: var(--muted); letter-spacing: .04em; }
+  .fc .yn { font-size: 12px; font-weight: 600; fill: var(--accent); }
+
+  footer { margin-top: 64px; font-size: 14px; color: var(--muted); border-top: 1px solid var(--border); padding-top: 20px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">feature_kit · design overview</div>
+  <h1>From daily time series to alpha signals</h1>
+  <p class="lede">feature_kit is a Polars library that turns panels of daily data, such as alternative-data KPIs, into forecast features for downstream alpha models. Every signal is built by four composable stages that share one column configuration.</p>
+  <nav class="toc">
+    <a href="#architecture">Architecture</a>
+    <a href="#workflow">Workflow</a>
+    <a href="#contract">Data contract</a>
+    <a href="#pairing">Pairing rules</a>
+    <a href="#modules">Modules</a>
+    <a href="#decisions">Design decisions</a>
+    <a href="#extending">Extending</a>
+    <a href="#limits">Limitations</a>
+  </nav>
+</header>
+
+<!-- ============================================================ -->
+<section id="architecture">
+  <h2>Architecture</h2>
+  <p class="sub">Four stages, each an abstract base class with a single <code>compute()</code> method. Each stage can be used alone or chained by <code>FeatureBuilder</code>.</p>
+
+  <div class="stages">
+    <div class="stage" style="--c: var(--s1)">
+      <div class="n">Stage 1</div>
+      <h4>Base feature</h4>
+      <p>What is the metric doing?</p>
+      <ul>
+        <li><code>RollingSumBaseFeature</code></li>
+        <li><code>YOYGrowthBaseFeature</code></li>
+        <li><code>POPGrowthBaseFeature</code></li>
+      </ul>
+    </div>
+    <div class="stage" style="--c: var(--s2)">
+      <div class="n">Stage 2</div>
+      <h4>Benchmark</h4>
+      <p>What should it be compared to?</p>
+      <ul>
+        <li><code>ZeroBenchmark</code></li>
+        <li><code>Lagged{YOY,POP}Growth…</code></li>
+        <li><code>LaggedRollingSum…</code></li>
+        <li><code>LaggedYOYProjected…</code></li>
+        <li><code>CohortRollingSum…</code></li>
+        <li><code>IBESConsensus…</code></li>
+      </ul>
+    </div>
+    <div class="stage" style="--c: var(--s3)">
+      <div class="n">Stage 3</div>
+      <h4>Comparison</h4>
+      <p>How far is the feature from the benchmark?</p>
+      <ul>
+        <li><code>Difference</code>, <code>Sign</code>, <code>Ratio</code> (pointwise)</li>
+        <li><code>ZScore</code>, <code>Rank</code>, <code>Residual</code> (rolling, per entity)</li>
+      </ul>
+    </div>
+    <div class="stage" style="--c: var(--s4)">
+      <div class="n">Stage 4</div>
+      <h4>Transformation</h4>
+      <p>Make the signal model-ready.</p>
+      <ul>
+        <li><code>Clip</code></li>
+        <li><code>Winsorize</code> (per date by default)</li>
+        <li><code>RampUp</code> / <code>RampDown</code> (by entity age)</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Class structure</h3>
+  <div class="figure">
+    <svg class="fc" viewBox="0 0 900 250" role="img" aria-labelledby="cls-t">
+      <title id="cls-t">Class structure: Param and FeatureBuilder use four abstract base classes</title>
+      <defs>
+        <marker id="tri" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" class="arrow"/>
+        </marker>
+        <marker id="hollow" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="11" markerHeight="11" orient="auto-start-reverse">
+          <path d="M0,0 L12,6 L0,12 z" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.3"/>
+        </marker>
+      </defs>
+      <!-- Param + builder -->
+      <rect x="40" y="16" width="200" height="56" rx="10" class="box-io"/>
+      <text x="140" y="40" text-anchor="middle" class="t">Param</text>
+      <text x="140" y="59" text-anchor="middle" class="m">keys · metrics · date_col</text>
+
+      <rect x="350" y="16" width="200" height="56" rx="10" class="box-merge"/>
+      <text x="450" y="40" text-anchor="middle" class="t">FeatureBuilder</text>
+      <text x="450" y="59" text-anchor="middle" class="m">compute(df, external_dfs)</text>
+
+      <path d="M350,44 L244,44" class="side" marker-end="url(#tri)"/>
+      <text x="297" y="36" text-anchor="middle" class="lbl">holds</text>
+
+      <!-- ABCs -->
+      <rect x="20"  y="122" width="200" height="50" rx="10" class="box-s1"/>
+      <text x="120" y="145" text-anchor="middle" class="t">BaseFeature</text>
+      <text x="120" y="162" text-anchor="middle" class="m">compute(df)</text>
+
+      <rect x="240" y="122" width="200" height="50" rx="10" class="box-s2"/>
+      <text x="340" y="145" text-anchor="middle" class="t">Benchmark</text>
+      <text x="340" y="162" text-anchor="middle" class="m">compute(base, raw, ext)</text>
+
+      <rect x="460" y="122" width="200" height="50" rx="10" class="box-s3"/>
+      <text x="560" y="145" text-anchor="middle" class="t">Comparison</text>
+      <text x="560" y="162" text-anchor="middle" class="m">compute(base, bench)</text>
+
+      <rect x="680" y="122" width="200" height="50" rx="10" class="box-s4"/>
+      <text x="780" y="145" text-anchor="middle" class="t">Transformation</text>
+      <text x="780" y="162" text-anchor="middle" class="m">compute(df)</text>
+
+      <!-- builder uses ABCs -->
+      <path d="M450,72 L450,96 L120,96 L120,118" class="edge" marker-end="url(#tri)"/>
+      <path d="M340,96 L340,118" class="edge" marker-end="url(#tri)"/>
+      <path d="M450,96 L560,96 L560,118" class="edge" marker-end="url(#tri)"/>
+      <path d="M560,96 L780,96 L780,118" class="edge" marker-end="url(#tri)"/>
+      <text x="630" y="90" text-anchor="middle" class="lbl">1 · n · n · n</text>
+
+      <!-- concrete classes -->
+      <text x="120" y="214" text-anchor="middle" class="d">3 concrete classes</text>
+      <text x="340" y="214" text-anchor="middle" class="d">7 concrete classes</text>
+      <text x="560" y="214" text-anchor="middle" class="d">6 concrete classes</text>
+      <text x="780" y="214" text-anchor="middle" class="d">4 concrete classes</text>
+      <path d="M120,200 L120,176" class="side" marker-end="url(#hollow)"/>
+      <path d="M340,200 L340,176" class="side" marker-end="url(#hollow)"/>
+      <path d="M560,200 L560,176" class="side" marker-end="url(#hollow)"/>
+      <path d="M780,200 L780,176" class="side" marker-end="url(#hollow)"/>
+      <text x="450" y="242" text-anchor="middle" class="d">Every component takes the same Param, so they agree on keys, date column and metric names.</text>
+    </svg>
+    <div class="caption">A builder holds one base feature and lists of benchmarks, comparisons and transformations. Hollow arrows mean "subclasses".</div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="workflow">
+  <h2>Workflow</h2>
+  <p class="sub">What <code>FeatureBuilder.compute(raw_df, external_dfs)</code> does, step by step.</p>
+
+  <div class="figure">
+    <svg class="fc" viewBox="0 0 900 940" role="img" aria-labelledby="wf-t">
+      <title id="wf-t">FeatureBuilder workflow flowchart</title>
+      <defs>
+        <marker id="tri2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" class="arrow"/>
+        </marker>
+      </defs>
+
+      <!-- 1. Input -->
+      <rect x="220" y="16" width="420" height="66" rx="33" class="box-io"/>
+      <text x="430" y="44" text-anchor="middle" class="t">Raw daily panel  ·  raw_df</text>
+      <text x="430" y="64" text-anchor="middle" class="m">keys · DATADATE · metric columns · extra columns</text>
+
+      <path d="M430,82 L430,114" class="edge" marker-end="url(#tri2)"/>
+
+      <!-- 2. Base feature -->
+      <rect x="220" y="118" width="420" height="80" rx="10" class="box-s1"/>
+      <text x="430" y="144" text-anchor="middle" class="t">Stage 1 · BaseFeature.compute(raw_df)</text>
+      <text x="430" y="164" text-anchor="middle" class="d">sort by keys, date → N-row rolling sums per entity</text>
+      <text x="430" y="182" text-anchor="middle" class="d">YoY / PoP: join the sum from date − offset (calendar-exact)</text>
+
+      <path d="M430,198 L430,262" class="edge" marker-end="url(#tri2)"/>
+      <text x="440" y="216" class="lbl">base_df</text>
+
+      <!-- Loop container -->
+      <rect x="190" y="226" width="480" height="300" rx="14" class="loop"/>
+      <text x="206" y="516" class="loop-t">FOR EACH BENCHMARK  ×  EACH COMPARISON</text>
+
+      <!-- 3. Benchmark -->
+      <rect x="220" y="266" width="420" height="80" rx="10" class="box-s2"/>
+      <text x="430" y="292" text-anchor="middle" class="t">Stage 2 · Benchmark.compute(base_df, raw_df, ext)</text>
+      <text x="430" y="312" text-anchor="middle" class="d">zero · lagged (date shift + join) · projected · cohort</text>
+      <text x="430" y="330" text-anchor="middle" class="d">IBES: backward as-of join on date per entity</text>
+
+      <path d="M430,346 L430,402" class="edge" marker-end="url(#tri2)"/>
+      <text x="440" y="378" class="lbl">bench_df</text>
+
+      <!-- 4. Comparison -->
+      <rect x="220" y="406" width="420" height="90" rx="10" class="box-s3"/>
+      <text x="430" y="432" text-anchor="middle" class="t">Stage 3 · Comparison.compute(base_df, bench_df)</text>
+      <text x="430" y="452" text-anchor="middle" class="d">join on keys + date → pair feature/benchmark columns</text>
+      <text x="430" y="470" text-anchor="middle" class="d">→ one signal column per pair</text>
+      <text x="430" y="487" text-anchor="middle" class="m">{base}__VS__{bench}__{NAME}</text>
+
+      <path d="M430,526 L430,566" class="edge" marker-end="url(#tri2)"/>
+      <text x="440" y="550" class="lbl">list of comparison frames</text>
+
+      <!-- 5. Merge -->
+      <rect x="220" y="570" width="420" height="62" rx="10" class="box-merge"/>
+      <text x="430" y="596" text-anchor="middle" class="t">Merge</text>
+      <text x="430" y="616" text-anchor="middle" class="d">left-join all comparison frames on keys + date</text>
+
+      <path d="M430,632 L430,670" class="edge" marker-end="url(#tri2)"/>
+
+      <!-- 6. Transformations -->
+      <rect x="190" y="674" width="480" height="140" rx="14" class="loop"/>
+      <text x="206" y="696" class="loop-t">FOR EACH TRANSFORMATION, IN ORDER</text>
+      <rect x="220" y="706" width="420" height="96" rx="10" class="box-s4"/>
+      <text x="430" y="732" text-anchor="middle" class="t">Stage 4 · Transformation.compute(signals)</text>
+      <text x="430" y="752" text-anchor="middle" class="d">no params? → use a copy with the builder's params</text>
+      <text x="430" y="770" text-anchor="middle" class="d">required_columns? → join from raw_df, compute, drop</text>
+      <text x="430" y="788" text-anchor="middle" class="d">clip · winsorize per date · ramp by age</text>
+
+      <path d="M430,814 L430,850" class="edge" marker-end="url(#tri2)"/>
+
+      <!-- 7. Output -->
+      <rect x="220" y="854" width="420" height="66" rx="33" class="box-io"/>
+      <text x="430" y="882" text-anchor="middle" class="t">Signals</text>
+      <text x="430" y="902" text-anchor="middle" class="m">keys + date + {base}__VS__{bench}__{NAME}</text>
+
+      <!-- Side input: raw_df reused (right lane) -->
+      <path d="M640,49 L770,49 L770,754 L644,754" class="side" marker-end="url(#tri2)"/>
+      <path d="M770,296 L644,296" class="side" marker-end="url(#tri2)"/>
+      <text x="780" y="180" class="lbl">raw_df</text>
+      <text x="780" y="196" class="lbl">reused</text>
+      <text x="700" y="288" text-anchor="middle" class="lbl">cohort cols</text>
+      <text x="706" y="746" text-anchor="middle" class="lbl">age col</text>
+
+      <!-- Side input: external_dfs (left lane) -->
+      <rect x="40" y="282" width="140" height="50" rx="10" class="box-io"/>
+      <text x="110" y="304" text-anchor="middle" class="t">external_dfs</text>
+      <text x="110" y="322" text-anchor="middle" class="m">{"ibes": …}</text>
+      <path d="M180,316 L216,316" class="side" marker-end="url(#tri2)"/>
+
+      <!-- Side input: base_df bypass into comparison (left lane) -->
+      <path d="M220,180 L20,180 L20,451 L216,451" class="side" marker-end="url(#tri2)"/>
+      <text x="32" y="390" class="lbl">base_df</text>
+      <text x="32" y="406" class="lbl">to every</text>
+      <text x="32" y="422" class="lbl">comparison</text>
+    </svg>
+    <div class="caption">Solid arrows: main data flow. Dashed arrows: side inputs. The output has only keys, date and signal columns; base features and benchmarks are not included.</div>
+  </div>
+
+  <h3>Column lineage, one example</h3>
+  <pre><code>SALES                                                          raw metric
+SALES__YOY_GROWTH__QUADWEEKLY                                  base feature (28-day YoY growth)
+SALES__YOY_GROWTH__QUADWEEKLY__LAG1MONTH                       benchmark (same feature, 28 days earlier)
+SALES__YOY_GROWTH__QUADWEEKLY__VS__SALES__YOY_GROWTH__QUADWEEKLY__LAG1MONTH__ZSCORE
+                                                               signal: z-score of the change in growth</code></pre>
+</section>
+
+<!-- ============================================================ -->
+<section id="contract">
+  <h2>Data contract</h2>
+  <p class="sub">Every frame is long format: one row per entity per date. Stages communicate only through column names.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Frame</th><th>Produced by</th><th>Columns</th></tr></thead>
+      <tbody>
+        <tr><td><code>raw_df</code></td><td>you</td><td><code>keys</code>, <code>date_col</code> (<code>pl.Date</code>), metric columns, optional extras (cohort, age)</td></tr>
+        <tr><td><code>base_df</code></td><td>BaseFeature</td><td>keys, date, <code>{METRIC}__{FEATURE}__{WINDOW}</code></td></tr>
+        <tr><td><code>bench_df</code></td><td>Benchmark</td><td>keys, date, <code>{feature}__{SUFFIX}</code> or a standalone column such as <code>ZERO_BENCHMARK</code></td></tr>
+        <tr><td>comparison frame</td><td>Comparison</td><td>keys, date, <code>{base}__VS__{bench}__{NAME}</code></td></tr>
+        <tr><td>signals</td><td>FeatureBuilder</td><td>keys, date, all comparison columns, transformed in place</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Param</h3>
+  <pre><code>Param(keys=["specid"], metrics=["SALES", "TXN"], date_col="DATADATE")</code></pre>
+  <p>The single source of truth for column names. <code>keys</code> scope every per-entity operation (rolling windows, z-scores, ranks, residuals); <code>metrics</code> become the prefix of every derived column.</p>
+</section>
+
+<!-- ============================================================ -->
+<section id="pairing">
+  <h2>Pairing rules</h2>
+  <p class="sub">Which feature column is compared with which benchmark column. Decided for each benchmark column in <code>comparisons._pair_cols</code>.</p>
+
+  <div class="figure">
+    <svg class="fc" viewBox="0 0 900 330" role="img" aria-labelledby="pr-t">
+      <title id="pr-t">Feature–benchmark pairing decision flowchart</title>
+      <defs>
+        <marker id="tri3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" class="arrow"/>
+        </marker>
+      </defs>
+      <rect x="40" y="14" width="300" height="44" rx="22" class="box-io"/>
+      <text x="190" y="41" text-anchor="middle" class="t">benchmark column bc</text>
+      <path d="M190,58 L190,84" class="edge" marker-end="url(#tri3)"/>
+
+      <!-- Q1 -->
+      <rect x="20" y="88" width="340" height="56" rx="10" class="box-q"/>
+      <text x="190" y="112" text-anchor="middle" class="t">Starts with a feature name + "__"?</text>
+      <text x="190" y="132" text-anchor="middle" class="m">e.g. SALES__YOY_GROWTH__QUADWEEKLY__…</text>
+      <path d="M360,116 L476,116" class="edge" marker-end="url(#tri3)"/>
+      <text x="418" y="108" text-anchor="middle" class="yn">yes</text>
+      <rect x="480" y="92" width="400" height="48" rx="10" class="box-yes"/>
+      <text x="680" y="113" text-anchor="middle" class="t">Pair only with that exact feature</text>
+      <text x="680" y="131" text-anchor="middle" class="d">same metric and same window</text>
+      <path d="M190,144 L190,170" class="edge" marker-end="url(#tri3)"/>
+      <text x="202" y="162" class="yn">no</text>
+
+      <!-- Q2 -->
+      <rect x="20" y="174" width="340" height="56" rx="10" class="box-q"/>
+      <text x="190" y="198" text-anchor="middle" class="t">params given and metric prefix?</text>
+      <text x="190" y="218" text-anchor="middle" class="m">e.g. SALES__CUSTOM_BENCHMARK</text>
+      <path d="M360,202 L476,202" class="edge" marker-end="url(#tri3)"/>
+      <text x="418" y="194" text-anchor="middle" class="yn">yes</text>
+      <rect x="480" y="178" width="400" height="48" rx="10" class="box-yes"/>
+      <text x="680" y="199" text-anchor="middle" class="t">Pair with every feature of that metric</text>
+      <text x="680" y="217" text-anchor="middle" class="d">any window</text>
+      <path d="M190,230 L190,256" class="edge" marker-end="url(#tri3)"/>
+      <text x="202" y="248" class="yn">no</text>
+
+      <!-- Default -->
+      <rect x="20" y="260" width="340" height="56" rx="10" class="box-no"/>
+      <text x="190" y="284" text-anchor="middle" class="t">Pair with every feature</text>
+      <text x="190" y="304" text-anchor="middle" class="m">ZERO_BENCHMARK, IBES_…</text>
+    </svg>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="modules">
+  <h2>Modules</h2>
+  <p class="sub">Small flat package (about 1,700 lines including docstrings). Everything except presets is re-exported from <code>feature_kit</code>.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Module</th><th>Responsibility</th><th>Key internals</th></tr></thead>
+      <tbody>
+        <tr><td><code>params.py</code></td><td><code>Param</code> and the four abstract base classes</td><td><code>Transformation.params</code>, <code>required_columns</code></td></tr>
+        <tr><td><code>base_features.py</code></td><td>Rolling sum, YoY growth, PoP growth</td><td><code>_rolling_sum</code> (row-based, <code>min_samples=1</code>)</td></tr>
+        <tr><td><code>benchmarks.py</code></td><td>Zero, lagged ×3, projected, cohort, IBES</td><td>lags as date shift + left join</td></tr>
+        <tr><td><code>comparisons.py</code></td><td>Pointwise and rolling comparisons</td><td><code>_shared_and_feature_cols</code>, <code>_pair_cols</code></td></tr>
+        <tr><td><code>transformations.py</code></td><td>Clip, winsorize, ramps</td><td><code>_feature_cols</code> (excludes keys, date, extras)</td></tr>
+        <tr><td><code>builder.py</code></td><td><code>FeatureBuilder</code> orchestration</td><td><code>_apply_transformation</code></td></tr>
+        <tr><td><code>presets.py</code></td><td>Ready-made builders</td><td><code>sales_yoy_vs_zero</code>, <code>sales_rolling_vs_zero</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="margin-top:12px">Dependency direction: <code>params</code> ← every stage module ← <code>builder</code> ← <code>presets</code>. Stage modules never import each other.</p>
+</section>
+
+<!-- ============================================================ -->
+<section id="decisions">
+  <h2>Design decisions</h2>
+  <p class="sub">The choices that shape how values are computed.</p>
+  <ul class="decisions">
+    <li><b>Lags are date shifts, not row shifts.</b><span>A lagged value is found by adding N days to the date column and joining back on keys + date. A missing day gives null instead of silently pulling the wrong day's value.</span></li>
+    <li><b>YoY offset is 364 days.</b><span>52 whole weeks keep the day of week aligned, which matters for spending data with strong weekly seasonality.</span></li>
+    <li><b>Column names carry lineage.</b><span>Double-underscore names record how each column was built. Benchmarks find their inputs by substring, and comparisons pair columns by prefix, so no extra metadata is passed between stages.</span></li>
+    <li><b>Builder is a full cross product.</b><span>Every comparison runs against every benchmark. Simple to reason about, but output width grows multiplicatively: metrics × windows × benchmark columns × comparisons.</span></li>
+    <li><b>Point-in-time by default.</b><span>Winsorize uses per-date quantiles, IBES uses a backward as-of join, and rolling statistics only look backwards. Full-sample winsorizing is opt-in (<code>scope="pooled"</code>).</span></li>
+    <li><b>Builder output is signals only.</b><span>Columns a transformation needs (e.g. an age column) are joined from the raw input just for that step and dropped afterwards.</span></li>
+    <li><b>Polars throughout.</b><span>Vectorised expressions with <code>.over(keys)</code> for per-entity work. The exceptions are <code>RankComparison</code> (Python callback) and <code>ResidualComparison</code> (NumPy loop).</span></li>
+  </ul>
+</section>
+
+<!-- ============================================================ -->
+<section id="extending">
+  <h2>Extending</h2>
+  <p class="sub">Add a component by subclassing a base class and following the naming convention.</p>
+  <div class="grid2">
+    <div class="card">
+      <h3 style="margin-top:0">Contract per stage</h3>
+      <ul>
+        <li><b>BaseFeature:</b> return keys + date + <code>{METRIC}__{FEATURE}__{WINDOW}</code>.</li>
+        <li><b>Benchmark:</b> one row per base row; name derived columns <code>{feature}__{SUFFIX}</code>.</li>
+        <li><b>Comparison:</b> reuse <code>_pair_cols</code>; name outputs <code>{base}__VS__{bench}__{NAME}</code>.</li>
+        <li><b>Transformation:</b> same columns in and out; optional <code>params</code> and <code>required_columns</code>.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Example</h3>
+<pre><code>class ConstantBenchmark(Benchmark):
+    def __init__(self, params, value):
+        self.params, self.value = params, value
+
+    def compute(self, base_df, raw_df, external_dfs=None):
+        k, d = self.params.keys, self.params.date_col
+        return base_df.select([*k, d]).with_columns(
+            pl.lit(self.value).alias("CONSTANT_BENCHMARK"))</code></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="limits">
+  <h2>Known limitations</h2>
+  <p class="sub">Current behaviour to account for. Details are in the docs site's <i>Known limitations</i> page.</p>
+  <div class="note">
+    <ul style="margin:0; padding-left:18px">
+      <li><b>Rows vs. days:</b> rolling windows count rows while lags match calendar dates; reindex each entity to a complete daily calendar first.</li>
+      <li><b>Unprefixed benchmarks</b> (zero, IBES) pair with every metric, including non-sales metrics for the IBES sales consensus.</li>
+      <li><b>Cohort benchmark</b> includes the entity itself in its cohort's aggregate.</li>
+      <li><b>Edge values:</b> rolling sums start with partial windows; division by zero gives <code>inf</code>/<code>NaN</code>, not null.</li>
+      <li><b>Performance:</b> rank and residual comparisons are slow on large panels.</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  feature_kit design overview · generated from the source at commit <code>1fb4ef9</code> · see <code>docs/</code> for the full user guide and API reference.
+</footer>
+
+</div>
+</body>
+</html>

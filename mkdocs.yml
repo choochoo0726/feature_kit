@@ -12,6 +12,7 @@ nav:
   - Home: index.md
   - Getting started: getting-started.md
   - Concepts: concepts.md
+  - Design overview: design.html
   - User guide:
       - Base features: guide/base-features.md
       - Benchmarks: guide/benchmarks.md
